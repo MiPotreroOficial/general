@@ -1,0 +1,401 @@
+/* RESET */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  text-decoration: none;
+}
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: #f0f2f5; /* Color de fondo más suave */
+  color: #222;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* SIDEBAR */
+.sidebar {
+  background-color: #2c4729; /* Color de fondo verde oscuro */
+  color: #fff;
+  width: 220px;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2rem;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+
+.logo-title {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* Espacio entre el icono del logo y el texto */
+  margin-bottom: 1rem;
+}
+
+.logo-icon {
+  font-size: 2.5rem; /* Tamaño del icono del logo */
+  color: #fff;
+}
+
+.sidebar h1 {
+  font-size: 1.8rem; /* Tamaño de fuente del título "MI POTRERO" */
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.subtitulo {
+  font-size: 0.85rem; /* Tamaño del subtítulo "La red social del fútbol" */
+  margin-top: -0.5rem;
+  font-family: "Poppins", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+  color: #e0e0e0;
+}
+
+nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; /* Espacio entre los botones de navegación */
+  width: 100%;
+}
+
+nav button {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* Espacio entre el icono y el texto del botón */
+  padding: 0.8rem 1rem;
+  background-color: transparent;
+  border: none; /* Eliminar borde del botón */
+  color: #fff;
+  border-radius: 8px; /* Bordes redondeados para los botones */
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 1rem;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+nav button .material-symbols-outlined {
+  font-size: 1.5rem; /* Tamaño de los iconos dentro de los botones */
+  color: #fff;
+}
+
+nav button:hover {
+  background-color: #4CAF50; /* Verde más claro al pasar el ratón */
+  color: #fff;
+}
+
+.imagen-portada {
+  flex: 1; /* Para que ocupe el espacio restante */
+  display: flex;
+  justify-content: center;
+  align-items: flex-end; /* Alinea el icono en la parte inferior */
+  padding-bottom: 2rem; /* Espacio desde la parte inferior */
+}
+
+.large-icon {
+  font-size: 6rem; /* Tamaño grande para el icono del potrero */
+  color: rgba(255, 255, 255, 0.3); /* Color blanco semitransparente */
+}
+
+/* MAIN CONTENT */
+main {
+  flex: 1;
+  padding: 2rem;
+  background-color: #f8f8f8; /* Fondo principal más claro */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Regla general para todas las secciones de contenido para consistencia de ancho */
+/* Secciones de contenido */
+.content-section {
+  width: 100%;
+  max-width: 700px; /* Ancho unificado para la mayoría de las secciones de contenido */
+  margin-bottom: 2rem;
+  background-color: #fff;
+  padding: 2.5rem; /* Ajuste el padding para estas secciones */
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Sección de formulario de autenticación (más estrecha) */
+#cuenta-section.formulario {
+  max-width: 450px; /* Ancho específico para el formulario de login/registro */
+  padding: 2rem; /* Padding original para formularios */
+}
+
+
+.formulario {
+  text-align: center;
+}
+
+.formulario h2 {
+  font-size: 1.8rem; /* Título del formulario más grande */
+  font-weight: 700;
+  margin-bottom: 2rem;
+  color: #333;
+}
+
+.formulario input {
+  width: calc(100% - 20px); /* Ajuste para padding */
+  margin-bottom: 1.5rem; /* Más espacio entre campos */
+  padding: 0.8rem;
+  border: 1px solid #ccc;
+  border-radius: 8px; /* Bordes más redondeados */
+  font-size: 1rem;
+  outline: none; /* Eliminar el contorno al enfocar */
+}
+
+.formulario input:focus {
+  border-color: #4CAF50; /* Borde verde al enfocar */
+}
+
+.formulario p {
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+  color: #555;
+}
+
+.formulario a {
+  color: #1a5dcc; /* Color azul para el enlace */
+  text-decoration: none;
+  font-weight: 600; /* Negrita para el enlace */
+  transition: color 0.3s ease;
+}
+
+.formulario a:hover {
+  color: #0d4a99;
+}
+
+.form-icon {
+  font-size: 4rem; /* Tamaño del icono de potrero en el formulario */
+  color: #e0e0e0; /* Color gris claro */
+  margin-bottom: 1.5rem;
+  display: block; /* Para que ocupe su propia línea y se centre */
+  text-align: center;
+  width: 100%; /* Asegura que se centre con text-align */
+}
+
+
+.formulario button {
+  width: 100%;
+  padding: 0.8rem;
+  background-color: #4CAF50; /* Color verde sólido para el botón */
+  color: #fff;
+  border: none;
+  border-radius: 8px; /* Bordes redondeados */
+  cursor: pointer;
+  font-size: 1.1rem;
+  font-weight: 600;
+  transition: background-color 0.3s ease;
+}
+
+.formulario button:hover {
+  background-color: #45a049; /* Verde un poco más oscuro al pasar el ratón */
+}
+
+/* Estilos para mensajes de la UI */
+.mensaje {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.mensaje.exito {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.mensaje.error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.mensaje.info {
+  background-color: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+/* Estilos para ocultar/mostrar secciones en SPA */
+.hidden {
+  display: none !important;
+}
+
+.active-section {
+  display: block; /* O display: flex; si la sección es un contenedor flex */
+}
+
+/* Estilos para las sub-secciones dentro de "Partidos" (mios.html original) */
+.sub-section {
+    margin-bottom: 2rem; /* Espacio entre "Partidos disponibles" y "Mis partidos" */
+    width: 100%; /* Para que ocupe todo el ancho de su content-section padre */
+}
+
+/* Estilos mejorados para cada tarjeta de partido */
+.partido {
+  background-color: #e9ecef;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem; /* Más espacio entre partidos */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  line-height: 1.6; /* Mejor espaciado entre líneas */
+}
+
+.partido h3 {
+  font-size: 1.2rem;
+  color: #2c4729; /* Color más oscuro para el título */
+  margin-bottom: 0.5rem;
+}
+
+.partido p {
+  margin-bottom: 0.3rem; /* Espacio entre párrafos */
+  font-size: 0.95rem;
+  color: #555;
+}
+
+.partido strong {
+  color: #2c4729; /* Asegura el color para el texto en negrita */
+}
+
+.partido .jugadores-list {
+  margin-top: 1rem;
+  border-top: 1px solid #dee2e6; /* Línea separadora */
+  padding-top: 0.8rem;
+}
+
+.partido .jugadores-list strong {
+  display: block; /* Para que "Inscritos:" esté en su propia línea */
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.partido .jugadores-list ul {
+  list-style: none; /* Quitar viñetas por defecto */
+  padding-left: 0;
+  display: flex;
+  flex-wrap: wrap; /* Permite que los jugadores se envuelvan */
+  gap: 0.5rem; /* Espacio entre cada jugador */
+}
+
+.partido .jugadores-list li {
+  background-color: #f0f0f0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #555;
+  white-space: nowrap; /* Evita que los emails largos se rompan en varias líneas dentro del li */
+  overflow: hidden; /* Oculta el texto que desborda */
+  text-overflow: ellipsis; /* Añade puntos suspensivos si el texto es muy largo */
+  max-width: 150px; /* Limita el ancho de cada email */
+}
+
+.partido button {
+  background-color: #1a5dcc;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 0.8rem; /* Más espacio entre la lista y el botón */
+  transition: background-color 0.3s ease;
+}
+
+.partido button:hover {
+  background-color: #0d4a99;
+}
+
+/* Media Queries para responsividad */
+@media (max-width: 768px) {
+  .layout {
+    flex-direction: column; /* Apila la barra lateral y el contenido en pantallas pequeñas */
+  }
+
+  .sidebar {
+    width: 100%;
+    padding: 1rem;
+    flex-direction: row; /* Elementos de la barra lateral en fila */
+    justify-content: space-around;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .logo-title {
+    margin-bottom: 0; /* No hay margen inferior en modo fila */
+  }
+
+  .sidebar h1 {
+    font-size: 1.5rem; /* Ajuste de tamaño para móviles */
+  }
+
+  .sidebar .subtitulo {
+    display: none; /* Oculta el subtítulo en pantallas pequeñas */
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap; /* Permite que los botones se envuelvan */
+    gap: 0.5rem;
+    justify-content: center;
+  }
+
+  nav button {
+    width: auto; /* Permite que los botones tengan ancho automático */
+    padding: 0.5rem 0.8rem;
+    font-size: 0.9rem;
+  }
+
+  .imagen-portada {
+    display: none; /* Oculta la imagen de portada en pantallas pequeñas */
+  }
+
+  main {
+    padding: 1rem; /* Menor padding en pantallas pequeñas */
+  }
+
+  .content-section {
+    padding: 1.5rem; /* Ajuste el padding de las secciones */
+    max-width: 100%; /* Ocupa todo el ancho disponible */
+  }
+
+  #cuenta-section.formulario {
+    max-width: 100%; /* También ocupa todo el ancho */
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    flex-direction: column; /* Vuelve a apilar la barra lateral si es muy pequeña */
+    text-align: center;
+  }
+
+  nav {
+    flex-direction: column; /* Botones de navegación apilados */
+  }
+
+  nav button {
+    width: 100%;
+  }
+
+  .formulario input,
+  .formulario button {
+    font-size: 0.9rem;
+  }
+
+  .partido .jugadores-list li {
+    max-width: 100%; /* Permite que los emails largos ocupen todo el ancho si es necesario */
+  }
+}

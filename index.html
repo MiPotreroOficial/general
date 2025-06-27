@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Potrero</title>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Protest+Strike&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo-title">
+        <span class="material-symbols-outlined logo-icon">stadium</span>
+        <h1>MI<br>POTRERO</h1>
+      </div>
+      <p class="subtitulo">La red social del fútbol</p>
+
+      <nav>
+        <a href="#explorar" class="nav-link"><button><span class="material-symbols-outlined">search</span>Explorar</button></a>
+        <a href="#crear" class="nav-link"><button><span class="material-symbols-outlined">add</span>Crear</button></a>
+        <a href="#partidos" class="nav-link"><button><span class="material-symbols-outlined">sports_soccer</span>Partidos</button></a>
+        <a href="#cuenta" class="nav-link"><button><span class="material-symbols-outlined">person</span>Cuenta</button></a>
+        <a href="#torneo" class="nav-link"><button><span class="material-symbols-outlined">emoji_events</span>Torneo</button></a>
+      </nav>
+      <div class="imagen-portada">
+        <span class="material-symbols-outlined large-icon">stadium</span>
+      </div>
+    </aside>
+
+    <main>
+      <section class="formulario content-section" id="cuenta-section">
+        </section>
+
+      <section id="explorar-section" class="content-section hidden">
+        <h2>¿Qué es Mi Potrero?</h2>
+        <h3>Mi Potrero es pasión y comunidad</h3>
+        <p>Aquí podrás encontrar partidos de fútbol cerca de ti y unirte a la acción. ¡Conéctate con otros amantes del fútbol y vive la pasión del potrero!</p>
+      </section>
+
+      <section id="crear-section" class="content-section hidden">
+        <h2>Crear Partido</h2>
+        <input type="text" id="lugar" placeholder="Lugar" /><br /><br />
+        <input type="datetime-local" id="fecha" /><br /><br />
+        <input type="number" id="cupos" placeholder="Cantidad de jugadores" /><br /><br />
+        <textarea id="descripcion" placeholder="Descripción"></textarea><br /><br />
+        <button id="btnCrear">Crear</button>
+        <div id="mensaje-crear" class="mensaje"></div>
+      </section>
+
+      <section id="partidos-section" class="content-section hidden">
+        <div class="sub-section">
+            <h2>Partidos disponibles</h2>
+            <div id="lista-partidos"></div>
+        </div>
+        <div class="sub-section">
+            <h2>Mis partidos</h2>
+            <div id="mis-partidos"></div>
+        </div>
+      </section>
+
+      <section id="torneo-section" class="content-section hidden">
+        <h2>Página de Torneos (En Desarrollo)</h2>
+        <p>¡Pronto podrás organizar y unirte a torneos!</p>
+      </section>
+
+      <div id="global-mensaje" class="mensaje"></div>
+    </main>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
