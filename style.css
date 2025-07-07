@@ -32,14 +32,15 @@ body {
 .logo-title {
   display: flex;
   align-items: center;
-  gap: 10px; /* Espacio entre el icono del logo y el texto */
-  margin-bottom: 1rem;
+  gap: 10px; /* Espacio entre el logo y el texto */
+  margin-bottom: 0.5rem; /* Ajustado para el subtítulo separado */
 }
 
+/* Estilos para la IMAGEN del logo */
 .logo-icon {
-  width: 40px; /* Ajusta el tamaño según necesites */ 
-  height: auto;
-  margin-right: 10px;
+  width: 2.5rem; /* Tamaño de la imagen del logo */
+  height: 2.5rem;
+  object-fit: contain; /* Asegura que la imagen se ajuste sin distorsionarse */
 }
 
 .sidebar h1 {
@@ -50,7 +51,7 @@ body {
 
 .subtitulo {
   font-size: 0.85rem; /* Tamaño del subtítulo "La red social del fútbol" */
-  margin-top: -0.5rem;
+  margin-top: 0; /* Asegurar que no haya margen superior adicional */
   font-family: "Poppins", sans-serif;
   font-weight: 400;
   font-style: normal;
@@ -92,23 +93,20 @@ nav button:hover {
 
 .imagen-portada {
   flex: 1; 
-  display: flex; 
-  justify-content: center; 
-  align-items: flex-end; 
-  padding-bottom: 2rem; 
-}
-.imagen-portada-img{
-  max-width: 80%; /* Ajusta el ancho máximo según necesites */ 
-  height: auto; 
-  display: block; /* Para que ocupe el ancho disponible dentro de su contenedor */ 
-  margin: 0 auto; /* Centrar la imagen horizontalmente */ 
-  opacity: 0.6; /* Puedes ajustar la opacidad */ 
+  display: flex;
+  justify-content: center;
+  align-items: flex-end; /* Alinea la imagen en la parte inferior */
+  padding-bottom: 2rem; /* Espacio desde la parte inferior */
 }
 
-.large-icon {
-  font-size: 6rem; /* Tamaño grande para el icono del potrero */
-  color: rgba(255, 255, 255, 0.3); /* Color blanco semitransparente */
+/* Estilos para la IMAGEN de portada */
+.imagen-portada-img { 
+  max-width: 80%; /* Ajusta el ancho máximo de la imagen */
+  height: auto;
+  object-fit: contain;
+  opacity: 0.6; /* Puedes ajustar la opacidad */
 }
+
 
 /* MAIN CONTENT */
 main {
@@ -121,10 +119,9 @@ main {
 }
 
 /* Regla general para todas las secciones de contenido para consistencia de ancho */
-/* Secciones de contenido */
 .content-section {
   width: 100%;
-  max-width: 700px; /* Ancho unificado para la mayoría de las secciones de contenido */
+  max-width: 700px; /* Ancho unificado para todas las secciones de contenido */
   margin-bottom: 2rem;
   background-color: #fff;
   padding: 2.5rem; /* Ajuste el padding para estas secciones */
@@ -134,12 +131,10 @@ main {
   margin-right: auto;
 }
 
-/* Sección de formulario de autenticación (más estrecha) */
+/* Estilo para la sección de formulario (Cuenta), ahora con el mismo max-width */
 #cuenta-section.formulario {
-  max-width: 450px; /* Ancho específico para el formulario de login/registro */
   padding: 2rem; /* Padding original para formularios */
 }
-
 
 .formulario {
   text-align: center;

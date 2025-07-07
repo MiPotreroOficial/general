@@ -6,7 +6,7 @@ import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
-  updateProfile // Importamos updateProfile para guardar el nombre de visualización en Firebase Auth
+  updateProfile
 } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-auth.js";
 import {
   getFirestore,
@@ -17,8 +17,8 @@ import {
   where,
   updateDoc,
   doc,
-  setDoc, // Importamos setDoc para crear o sobrescribir documentos
-  getDoc // Importamos getDoc para obtener un solo documento
+  setDoc,
+  getDoc
 } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-firestore.js";
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
@@ -35,14 +35,85 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const partidosCol = collection(db, "partidos");
-const usuariosCol = collection(db, "usuarios"); // ¡Asegúrate de que esta línea esté presente!
+const usuariosCol = collection(db, "usuarios");
 
-// --- Variables para SPA (sin cambios relevantes aquí) ---
+// --- Variables para Google Maps (Restauradas) ---
+let autocomplete;
+let map;
+let marker;
+
+// La función initMap debe ser global para que Google Maps la llame
+window.initMap = function() {
+  const lugarInput = document.getElementById('lugar');
+  const mapElement = document.getElementById('map');
+
+  // Solo inicializar si los elementos existen (para evitar errores en otras páginas/secciones)
+  if (lugarInput && mapElement && !autocomplete) { // Solo inicializar una vez
+    autocomplete = new google.maps.places.Autocomplete(lugarInput, {
+      types: ['establishment', 'point_of_interest'],
+      componentRestrictions: { 'country': ['ar'] } // Mendoza, Argentina
+    });
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (!place.geometry) {
+        mostrarMensaje("No se encontraron detalles para la entrada: '" + place.name + "'", "error", "mensaje-crear");
+        lugarInput.value = '';
+        lugarInput.removeAttribute('data-place-id');
+        mapElement.style.display = 'none';
+        return;
+      }
+
+      lugarInput.value = place.name;
+      lugarInput.setAttribute('data-place-id', place.place_id);
+
+      const isSportsVenue = place.types.includes('stadium') || 
+                            place.types.includes('sports_club') || 
+                            place.types.includes('park') || 
+                            place.types.includes('point_of_interest'); 
+
+      if (!isSportsVenue) {
+        mostrarMensaje("El lugar seleccionado no parece ser una cancha o recinto deportivo válido. Por favor, selecciona una cancha real de la lista.", "error", "mensaje-crear");
+        lugarInput.value = '';
+        lugarInput.removeAttribute('data-place-id');
+        mapElement.style.display = 'none';
+        return;
+      }
+
+      mapElement.style.display = 'block';
+      if (!map) {
+        map = new google.maps.Map(mapElement, {
+          center: place.geometry.location,
+          zoom: 17,
+        });
+        marker = new google.maps.Marker({
+          map: map,
+          position: place.geometry.location,
+          title: place.name
+        });
+      } else {
+        map.setCenter(place.geometry.location);
+        marker.setPosition(place.geometry.location);
+        marker.setTitle(place.name);
+      }
+    });
+
+    lugarInput.addEventListener('input', () => {
+        if (lugarInput.value === '') {
+            lugarInput.removeAttribute('data-place-id');
+            mapElement.style.display = 'none';
+        }
+    });
+  }
+};
+
+
+// --- Variables para SPA ---
 const allSections = document.querySelectorAll('main section');
 const navLinks = document.querySelectorAll('.nav-link');
 const cuentaSection = document.getElementById('cuenta-section');
 
-// --- Funciones de Utilidad (sin cambios) ---
+// --- Funciones de Utilidad ---
 function mostrarMensaje(mensaje, tipo = "exito", targetDivId = "global-mensaje") {
   const mensajeDiv = document.getElementById(targetDivId);
   if (mensajeDiv) {
@@ -71,9 +142,25 @@ function showSection(sectionId) {
   }
 }
 
-// --- Lógica de Navegación (SPA Router - sin cambios significativos) ---
+// --- Lógica de Navegación (SPA Router) ---
 function navigateTo(path) {
   const user = auth.currentUser;
+
+  // Limpiar el estado del formulario "Crear Partido" al salir de él
+  if (path !== 'crear') {
+    const lugarInput = document.getElementById('lugar');
+    const mapElement = document.getElementById('map');
+    if (lugarInput) {
+      lugarInput.value = '';
+      lugarInput.removeAttribute('data-place-id');
+    }
+    if (mapElement) {
+      mapElement.style.display = 'none';
+    }
+    const mensajeCrear = document.getElementById('mensaje-crear');
+    if (mensajeCrear) mensajeCrear.textContent = '';
+  }
+
 
   // Bloquear acceso a secciones protegidas si no hay usuario
   if (['explorar', 'crear', 'partidos', 'torneo'].includes(path) && !user) {
@@ -89,6 +176,9 @@ function navigateTo(path) {
       break;
     case 'crear':
       showSection('crear-section');
+      // Asegurarse de que initMap se ha llamado y el autocomplete se adjunte
+      // Esto se manejará por la carga asíncrona de la API de Maps.
+      // `initMap` se llama globalmente, una vez que la API está lista.
       break;
     case 'partidos':
       showSection('partidos-section');
@@ -97,7 +187,6 @@ function navigateTo(path) {
       break;
     case 'cuenta':
       showSection('cuenta-section');
-      // onAuthStateChanged ya maneja lo que se muestra aquí
       break;
     case 'torneo':
       showSection('torneo-section');
@@ -111,7 +200,7 @@ function navigateTo(path) {
   }
 }
 
-// --- Manejo de la Barra Lateral (sin cambios) ---
+// --- Manejo de la Barra Lateral ---
 navLinks.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
@@ -125,7 +214,7 @@ window.addEventListener('popstate', () => {
   navigateTo(path);
 });
 
-// --- Lógica de Autenticación para Cuenta (¡CAMBIOS AQUÍ para Nombre!) ---
+// --- Lógica de Autenticación para Cuenta ---
 function renderAuthForm(isLogin = false) {
   cuentaSection.innerHTML = `
     <h2>${isLogin ? 'Iniciar Sesión' : 'Registrarse'}</h2>
@@ -152,7 +241,7 @@ function setupAuthForms() {
       e.preventDefault();
       const email = registerForm.querySelector('#auth-email').value;
       const password = registerForm.querySelector('#auth-password').value;
-      const nombre = registerForm.querySelector('#auth-nombre').value.trim(); // Obtener el nombre
+      const nombre = registerForm.querySelector('#auth-nombre').value.trim();
 
       if (!nombre) {
         mostrarMensaje("Por favor, introduce tu nombre de jugador.", "error", "global-mensaje");
@@ -163,14 +252,12 @@ function setupAuthForms() {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // 1. Guardar el nombre de visualización en Firebase Authentication (displayName)
         await updateProfile(user, { displayName: nombre });
 
-        // 2. Guardar el nombre en la colección de usuarios de Firestore
         await setDoc(doc(db, "usuarios", user.uid), {
           email: user.email,
-          nombre: nombre, // Almacenar el nombre
-          uid: user.uid // También puedes almacenar el UID para referencia
+          nombre: nombre,
+          uid: user.uid
         });
 
         mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
@@ -210,9 +297,8 @@ function setupAuthForms() {
 }
 
 async function displayUserProfile(user) {
-  let userName = user.displayName; // Intentar obtener el nombre de displayName
+  let userName = user.displayName;
 
-  // Si displayName no está, intentar obtenerlo de Firestore
   if (!userName && user.uid) {
     const userDocRef = doc(db, "usuarios", user.uid);
     const userDocSnap = await getDoc(userDocRef);
@@ -220,11 +306,9 @@ async function displayUserProfile(user) {
       userName = userDocSnap.data().nombre;
     }
   }
-  // Si aún no hay nombre, usar el email como fallback
   if (!userName) {
     userName = user.email;
   }
-
 
   cuentaSection.innerHTML = `
     <h2>Mi perfil</h2>
@@ -236,7 +320,6 @@ async function displayUserProfile(user) {
     <button id="cerrarSesion">Cerrar sesión</button>
   `;
 
-  // Lógica para editar el nombre
   const btnEditName = document.getElementById('btn-edit-name');
   const btnSaveName = document.getElementById('btn-save-name');
   const editUserNameInput = document.getElementById('edit-user-name');
@@ -248,23 +331,18 @@ async function displayUserProfile(user) {
     editUserNameInput.style.display = 'inline-block';
     btnSaveName.style.display = 'inline-block';
     editUserNameInput.focus();
-    editUserNameInput.select(); // Selecciona el texto para facilitar la edición
+    editUserNameInput.select();
   });
 
   btnSaveName.addEventListener('click', async () => {
     const newName = editUserNameInput.value.trim();
     if (newName && user) {
       try {
-        // Actualizar displayName en Firebase Authentication
         await updateProfile(user, { displayName: newName });
-        // Actualizar el nombre en Firestore (usando merge para no sobrescribir otros campos)
         await setDoc(doc(db, "usuarios", user.uid), { nombre: newName }, { merge: true });
         
         mostrarMensaje("Nombre actualizado correctamente.", "exito", "global-mensaje");
-        // Volver a mostrar el perfil para reflejar los cambios
         displayUserProfile(user); 
-        // Recargar las listas de partidos si el usuario está viéndolas,
-        // para que se actualice su nombre en las listas
         if (window.location.hash.substring(1) === 'partidos') {
             cargarPartidos();
             cargarMisPartidos();
@@ -276,7 +354,6 @@ async function displayUserProfile(user) {
       mostrarMensaje("Por favor, introduce un nombre válido.", "error", "global-mensaje");
     }
   });
-
 
   document.getElementById("cerrarSesion").addEventListener("click", () => {
     signOut(auth).then(() => {
@@ -303,25 +380,21 @@ onAuthStateChanged(auth, user => {
   }
 });
 
-// --- Funciones de Partidos (¡CAMBIOS AQUÍ para mostrar nombres!) ---
+// --- Funciones de Partidos ---
 
-// Función para obtener el nombre de un usuario por su email
-// ¡Esta función ahora busca en la colección 'usuarios' por email!
 async function getUserNameByEmail(userEmail) {
     if (!userEmail) return "Desconocido";
     try {
         const q = query(usuariosCol, where("email", "==", userEmail));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
-            // Devuelve el primer nombre encontrado para ese email
             return querySnapshot.docs[0].data().nombre || userEmail;
         }
     } catch (error) {
         console.error("Error al obtener nombre por email:", error);
     }
-    return userEmail; // Devuelve el email si no encuentra el nombre o hay un error
+    return userEmail;
 }
-
 
 async function cargarPartidos() {
   const lista = document.getElementById("lista-partidos");
@@ -346,7 +419,6 @@ async function cargarPartidos() {
       const fechaFormateada = fechaPartido.toLocaleString();
       let jugadoresActuales = p.jugadores ? p.jugadores.length : 0;
       
-      // Obtener los nombres de los jugadores inscritos usando los emails guardados
       const nombresJugadoresPromises = p.jugadores.map(email => getUserNameByEmail(email));
       const nombresJugadores = await Promise.all(nombresJugadoresPromises);
 
@@ -368,7 +440,6 @@ async function cargarPartidos() {
       `;
 
       if (auth.currentUser) {
-        // Verificar si el usuario actual ya está unido (usando email para la verificación)
         const isJoined = p.jugadores.includes(auth.currentUser.email);
 
         if (!isJoined) {
@@ -376,7 +447,7 @@ async function cargarPartidos() {
           btn.textContent = "Unirse";
           btn.onclick = () => unirseAPartido(doc.id, p);
           div.appendChild(btn);
-        } else { // Si ya está unido
+        } else {
           const spanUnido = document.createElement("span");
           spanUnido.textContent = "¡Ya estás unido!";
           spanUnido.style.color = "green";
@@ -389,7 +460,9 @@ async function cargarPartidos() {
 }
 
 async function crearPartido() {
-  const lugar = document.getElementById("lugar").value.trim();
+  const lugarInput = document.getElementById("lugar");
+  const lugar = lugarInput.value.trim();
+  const placeId = lugarInput.getAttribute('data-place-id');
   const fechaInput = document.getElementById("fecha").value;
   const cupos = parseInt(document.getElementById("cupos").value);
   const descripcion = document.getElementById("descripcion").value.trim();
@@ -403,10 +476,14 @@ async function crearPartido() {
       mostrarMensaje("Debes iniciar sesión para crear un partido.", "error", "mensaje-crear");
       return;
   }
-  // Asegurarse de que el usuario tenga un nombre antes de crear un partido
   if (!currentUser.displayName) {
       mostrarMensaje("Por favor, establece tu nombre de jugador en la sección 'Cuenta' antes de crear un partido.", "error", "mensaje-crear");
-      navigateTo('cuenta'); // Redirigir para que lo configure
+      navigateTo('cuenta');
+      return;
+  }
+
+  if (!placeId) {
+      mostrarMensaje("Por favor, selecciona un lugar válido del autocompletado de Google Maps.", "error", "mensaje-crear");
       return;
   }
 
@@ -426,21 +503,23 @@ async function crearPartido() {
     return;
   }
   
-  // Guardamos el email como identificador único en el array de jugadores del partido.
-  // La visualización se hará obteniendo el nombre asociado a ese email.
   const partido = {
-    lugar,
+    lugar: lugar,
+    placeId: placeId,
     fecha: fecha.toISOString(),
     cupos,
     descripcion,
-    creador: currentUser.email, // Guarda el email del creador
-    jugadores: [currentUser.email] // Guarda los emails de los jugadores inscritos
+    creador: currentUser.email,
+    jugadores: [currentUser.email]
   };
 
   addDoc(partidosCol, partido).then(() => {
     mostrarMensaje("¡Partido creado exitosamente!", "exito", "global-mensaje");
     // Limpiar el formulario después de crear el partido
-    document.getElementById("lugar").value = '';
+    lugarInput.value = '';
+    lugarInput.removeAttribute('data-place-id');
+    const mapElement = document.getElementById('map');
+    if (mapElement) mapElement.style.display = 'none';
     document.getElementById("fecha").value = '';
     document.getElementById("cupos").value = '';
     document.getElementById("descripcion").value = '';
@@ -469,7 +548,6 @@ async function cargarMisPartidos() {
       const div = document.createElement("div");
       const fechaFormateada = new Date(p.fecha).toLocaleString();
       
-      // Obtener los nombres de los jugadores inscritos
       const nombresJugadoresPromises = p.jugadores.map(email => getUserNameByEmail(email));
       const nombresJugadores = await Promise.all(nombresJugadoresPromises);
 
@@ -502,10 +580,9 @@ window.unirseAPartido = async function(id, partido) {
     navigateTo('cuenta');
     return;
   }
-  // Asegurarse de que el usuario tenga un nombre antes de unirse
   if (!currentUser.displayName) {
       mostrarMensaje("Por favor, establece tu nombre de jugador en la sección 'Cuenta' antes de unirte a un partido.", "error", "global-mensaje");
-      navigateTo('cuenta'); // Redirigir para que lo configure
+      navigateTo('cuenta');
       return;
   }
 
@@ -518,7 +595,7 @@ window.unirseAPartido = async function(id, partido) {
     return;
   }
 
-  const nuevosJugadores = [...partido.jugadores, currentUser.email]; // Se sigue guardando el email
+  const nuevosJugadores = [...partido.jugadores, currentUser.email];
   const docRef = doc(db, "partidos", id);
 
   updateDoc(docRef, { jugadores: nuevosJugadores }).then(() => {
