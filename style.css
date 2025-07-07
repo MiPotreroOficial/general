@@ -37,8 +37,9 @@ body {
 }
 
 .logo-icon {
-  font-size: 2.5rem; /* Tamaño del icono del logo */
-  color: #fff;
+  width: 40px; /* Ajusta el tamaño según necesites */ 
+  height: auto;
+  margin-right: 10px;
 }
 
 .sidebar h1 {
@@ -90,11 +91,18 @@ nav button:hover {
 }
 
 .imagen-portada {
-  flex: 1; /* Para que ocupe el espacio restante */
-  display: flex;
-  justify-content: center;
-  align-items: flex-end; /* Alinea el icono en la parte inferior */
-  padding-bottom: 2rem; /* Espacio desde la parte inferior */
+  flex: 1; 
+  display: flex; 
+  justify-content: center; 
+  align-items: flex-end; 
+  padding-bottom: 2rem; 
+}
+.imagen-portada-img{
+  max-width: 80%; /* Ajusta el ancho máximo según necesites */ 
+  height: auto; 
+  display: block; /* Para que ocupe el ancho disponible dentro de su contenedor */ 
+  margin: 0 auto; /* Centrar la imagen horizontalmente */ 
+  opacity: 0.6; /* Puedes ajustar la opacidad */ 
 }
 
 .large-icon {

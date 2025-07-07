@@ -5,7 +5,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
-  signOut
+  signOut,
+  updateProfile // Importamos updateProfile para guardar el nombre de visualización en Firebase Auth
 } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-auth.js";
 import {
   getFirestore,
@@ -15,30 +16,33 @@ import {
   query,
   where,
   updateDoc,
-  doc
+  doc,
+  setDoc, // Importamos setDoc para crear o sobrescribir documentos
+  getDoc // Importamos getDoc para obtener un solo documento
 } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-firestore.js";
 
-// Config y init Firebase
+// Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
-  authDomain: "mi-potrero-partidos.firebaseapp.com",
-  projectId: "mi-potrero-partidos",
-  storageBucket: "mi-potrero-partidos.firebasestorage.app",
-  messagingSenderId: "555922222113",
-  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",
-  measurementId: "G-7LBJ29RXKM"
+  apiKey: "TU_API_KEY_AQUI",
+  authDomain: "TU_AUTH_DOMAIN_AQUI",
+  projectId: "TU_PROJECT_ID_AQUI",
+  storageBucket: "TU_STORAGE_BUCKET_AQUI",
+  messagingSenderId: "TU_MESSAGING_SENDER_ID_AQUI",
+  appId: "TU_APP_ID_AQUI",
+  measurementId: "TU_MEASUREMENT_ID_AQUI"
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const partidosCol = collection(db, "partidos");
+const usuariosCol = collection(db, "usuarios"); // ¡Asegúrate de que esta línea esté presente!
 
-// --- Variables para SPA ---
+// --- Variables para SPA (sin cambios relevantes aquí) ---
 const allSections = document.querySelectorAll('main section');
 const navLinks = document.querySelectorAll('.nav-link');
-const cuentaSection = document.getElementById('cuenta-section'); // La sección de autenticación/perfil
+const cuentaSection = document.getElementById('cuenta-section');
 
-// --- Funciones de Utilidad ---
+// --- Funciones de Utilidad (sin cambios) ---
 function mostrarMensaje(mensaje, tipo = "exito", targetDivId = "global-mensaje") {
   const mensajeDiv = document.getElementById(targetDivId);
   if (mensajeDiv) {
@@ -67,74 +71,68 @@ function showSection(sectionId) {
   }
 }
 
-// --- Lógica de Navegación (SPA Router) ---
+// --- Lógica de Navegación (SPA Router - sin cambios significativos) ---
 function navigateTo(path) {
   const user = auth.currentUser;
 
   // Bloquear acceso a secciones protegidas si no hay usuario
   if (['explorar', 'crear', 'partidos', 'torneo'].includes(path) && !user) {
     mostrarMensaje("Inicia sesión primero para acceder a esta sección.", "error", "global-mensaje");
-    history.pushState(null, '', '#cuenta'); // Redirigir a la cuenta
+    history.pushState(null, '', '#cuenta');
     showSection('cuenta-section');
     return;
   }
 
-  // Lógica para mostrar la sección correcta
   switch (path) {
     case 'explorar':
       showSection('explorar-section');
-      // En este diseño, 'explorar' es solo informativo. Los partidos están en 'partidos'
       break;
     case 'crear':
       showSection('crear-section');
-      // El listener para el botón de crear partido se adjunta al cargar la página
-      // y no necesita ser re-adjuntado aquí a menos que el botón se re-renderice dinámicamente.
       break;
-    case 'partidos': // Corresponde a la vista de "Mis Partidos" y "Partidos Disponibles"
+    case 'partidos':
       showSection('partidos-section');
-      cargarPartidos(); // Carga partidos disponibles
-      cargarMisPartidos(); // Carga mis partidos
+      cargarPartidos();
+      cargarMisPartidos();
       break;
     case 'cuenta':
       showSection('cuenta-section');
-      // El onAuthStateChanged ya maneja lo que se muestra aquí (formulario o perfil)
+      // onAuthStateChanged ya maneja lo que se muestra aquí
       break;
     case 'torneo':
       showSection('torneo-section');
       break;
     default:
-      // Si la URL no tiene hash o tiene un hash desconocido, redirige a #cuenta por defecto
       history.replaceState(null, '', '#cuenta');
       showSection('cuenta-section');
   }
-  // Asegurarse de que el hash esté siempre presente en la URL si no es la ruta base
   if (window.location.hash !== `#${path}`) {
     history.pushState(null, '', `#${path}`);
   }
 }
 
-// --- Manejo de la Barra Lateral ---
+// --- Manejo de la Barra Lateral (sin cambios) ---
 navLinks.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
-    const path = link.getAttribute('href').substring(1); // Obtiene 'explorar', 'crear', etc.
+    const path = link.getAttribute('href').substring(1);
     navigateTo(path);
   });
 });
 
-// Manejo de la navegación del navegador (botón atrás/adelante)
 window.addEventListener('popstate', () => {
   const path = window.location.hash.substring(1) || 'cuenta';
   navigateTo(path);
 });
 
-// --- Lógica de Autenticación para Cuenta (index.html) ---
+// --- Lógica de Autenticación para Cuenta (¡CAMBIOS AQUÍ para Nombre!) ---
 function renderAuthForm(isLogin = false) {
   cuentaSection.innerHTML = `
     <h2>${isLogin ? 'Iniciar Sesión' : 'Registrarse'}</h2>
     <form id="${isLogin ? 'login-form' : 'register-form'}">
       <input type="email" id="auth-email" placeholder="Email" required>
       <input type="password" id="auth-password" placeholder="Contraseña" required>
+      ${!isLogin ? '<input type="text" id="auth-nombre" placeholder="Tu Nombre de Jugador" required>' : ''}
       <p>${isLogin ? '¿No tienes una cuenta? <a href="#" id="toggle-register">Registrarse.</a>' : '¿Ya tienes una cuenta? <a href="#" id="toggle-login">Iniciar Sesión.</a>'}</p>
       <span class="material-symbols-outlined form-icon">stadium</span>
       <button type="submit">${isLogin ? 'Iniciar Sesión' : 'Registrarse'}</button>
@@ -154,10 +152,28 @@ function setupAuthForms() {
       e.preventDefault();
       const email = registerForm.querySelector('#auth-email').value;
       const password = registerForm.querySelector('#auth-password').value;
+      const nombre = registerForm.querySelector('#auth-nombre').value.trim(); // Obtener el nombre
+
+      if (!nombre) {
+        mostrarMensaje("Por favor, introduce tu nombre de jugador.", "error", "global-mensaje");
+        return;
+      }
+
       try {
-        await createUserWithEmailAndPassword(auth, email, password);
-        mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido!", "exito", "global-mensaje");
-        // onAuthStateChanged se disparará después del registro exitoso
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // 1. Guardar el nombre de visualización en Firebase Authentication (displayName)
+        await updateProfile(user, { displayName: nombre });
+
+        // 2. Guardar el nombre en la colección de usuarios de Firestore
+        await setDoc(doc(db, "usuarios", user.uid), {
+          email: user.email,
+          nombre: nombre, // Almacenar el nombre
+          uid: user.uid // También puedes almacenar el UID para referencia
+        });
+
+        mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
       } catch (error) {
         mostrarMensaje("Error al crear cuenta: " + error.message, "error", "global-mensaje");
       }
@@ -172,7 +188,6 @@ function setupAuthForms() {
       try {
         await signInWithEmailAndPassword(auth, email, password);
         mostrarMensaje("Sesión iniciada correctamente. ¡Bienvenido!", "exito", "global-mensaje");
-        // onAuthStateChanged se disparará después del inicio de sesión exitoso
       } catch (error) {
         mostrarMensaje("Error al iniciar sesión: " + error.message, "error", "global-mensaje");
       }
@@ -194,37 +209,93 @@ function setupAuthForms() {
   }
 }
 
-function displayUserProfile(user) {
+async function displayUserProfile(user) {
+  let userName = user.displayName; // Intentar obtener el nombre de displayName
+
+  // Si displayName no está, intentar obtenerlo de Firestore
+  if (!userName && user.uid) {
+    const userDocRef = doc(db, "usuarios", user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists() && userDocSnap.data().nombre) {
+      userName = userDocSnap.data().nombre;
+    }
+  }
+  // Si aún no hay nombre, usar el email como fallback
+  if (!userName) {
+    userName = user.email;
+  }
+
+
   cuentaSection.innerHTML = `
     <h2>Mi perfil</h2>
     <p><strong>Email:</strong> ${user.email}</p>
+    <p><strong>Nombre de Jugador:</strong> <span id="display-user-name">${userName}</span></p>
+    <input type="text" id="edit-user-name" placeholder="Actualizar nombre" value="${userName}" style="display:none; margin-bottom: 10px;">
+    <button id="btn-edit-name" style="margin-right: 10px;">Editar Nombre</button>
+    <button id="btn-save-name" style="display:none; margin-right: 10px;">Guardar Nombre</button>
     <button id="cerrarSesion">Cerrar sesión</button>
   `;
+
+  // Lógica para editar el nombre
+  const btnEditName = document.getElementById('btn-edit-name');
+  const btnSaveName = document.getElementById('btn-save-name');
+  const editUserNameInput = document.getElementById('edit-user-name');
+  const displayUserNameSpan = document.getElementById('display-user-name');
+
+  btnEditName.addEventListener('click', () => {
+    displayUserNameSpan.style.display = 'none';
+    btnEditName.style.display = 'none';
+    editUserNameInput.style.display = 'inline-block';
+    btnSaveName.style.display = 'inline-block';
+    editUserNameInput.focus();
+    editUserNameInput.select(); // Selecciona el texto para facilitar la edición
+  });
+
+  btnSaveName.addEventListener('click', async () => {
+    const newName = editUserNameInput.value.trim();
+    if (newName && user) {
+      try {
+        // Actualizar displayName en Firebase Authentication
+        await updateProfile(user, { displayName: newName });
+        // Actualizar el nombre en Firestore (usando merge para no sobrescribir otros campos)
+        await setDoc(doc(db, "usuarios", user.uid), { nombre: newName }, { merge: true });
+        
+        mostrarMensaje("Nombre actualizado correctamente.", "exito", "global-mensaje");
+        // Volver a mostrar el perfil para reflejar los cambios
+        displayUserProfile(user); 
+        // Recargar las listas de partidos si el usuario está viéndolas,
+        // para que se actualice su nombre en las listas
+        if (window.location.hash.substring(1) === 'partidos') {
+            cargarPartidos();
+            cargarMisPartidos();
+        }
+      } catch (error) {
+        mostrarMensaje("Error al actualizar nombre: " + error.message, "error", "global-mensaje");
+      }
+    } else {
+      mostrarMensaje("Por favor, introduce un nombre válido.", "error", "global-mensaje");
+    }
+  });
+
+
   document.getElementById("cerrarSesion").addEventListener("click", () => {
     signOut(auth).then(() => {
       mostrarMensaje("Sesión cerrada.", "exito", "global-mensaje");
-      // onAuthStateChanged se disparará y renderAuthForm(true) se llamará
     }).catch(e => mostrarMensaje("Error al cerrar sesión: " + e.message, "error", "global-mensaje"));
   });
 }
 
-// Manejar estado de autenticación globalmente
 onAuthStateChanged(auth, user => {
   if (user) {
     displayUserProfile(user);
-    // Si el usuario está logueado y está en la URL base o en #cuenta,
-    // lo redirigimos a la página de partidos por defecto.
-    // Esto evita que un usuario logueado siempre vea la pantalla de login/registro.
     const currentHash = window.location.hash.substring(1);
     if (currentHash === '' || currentHash === 'cuenta') {
         navigateTo('partidos');
     } else {
-        // Si ya está en otra sección (ej. #explorar), simplemente asegura que se muestre.
         navigateTo(currentHash);
     }
   } else {
-    renderAuthForm(false); // Muestra el formulario de registro/login si no está logueado
-    // Si el usuario está en una página protegida y cierra sesión, lo redirigimos a la cuenta
+    renderAuthForm(false);
     const currentHash = window.location.hash.substring(1);
     if (['explorar', 'crear', 'partidos', 'torneo'].includes(currentHash)) {
         navigateTo('cuenta');
@@ -232,34 +303,55 @@ onAuthStateChanged(auth, user => {
   }
 });
 
-// --- Funciones de Partidos (ahora llamadas por navigateTo) ---
+// --- Funciones de Partidos (¡CAMBIOS AQUÍ para mostrar nombres!) ---
 
-// Función para cargar partidos (para la sección 'Partidos disponibles' en la vista 'partidos')
-function cargarPartidos() {
+// Función para obtener el nombre de un usuario por su email
+// ¡Esta función ahora busca en la colección 'usuarios' por email!
+async function getUserNameByEmail(userEmail) {
+    if (!userEmail) return "Desconocido";
+    try {
+        const q = query(usuariosCol, where("email", "==", userEmail));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            // Devuelve el primer nombre encontrado para ese email
+            return querySnapshot.docs[0].data().nombre || userEmail;
+        }
+    } catch (error) {
+        console.error("Error al obtener nombre por email:", error);
+    }
+    return userEmail; // Devuelve el email si no encuentra el nombre o hay un error
+}
+
+
+async function cargarPartidos() {
   const lista = document.getElementById("lista-partidos");
   if (!lista) return;
-  lista.innerHTML = ""; // Limpiar antes de cargar
+  lista.innerHTML = "";
 
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
-  getDocs(partidosCol).then(snapshot => {
+  getDocs(partidosCol).then(async snapshot => {
     if (snapshot.empty) {
       lista.innerHTML = "<p>No hay partidos disponibles en este momento.</p>";
       return;
     }
-    snapshot.forEach(doc => {
+    for (const doc of snapshot.docs) {
       const p = doc.data();
       const fechaPartido = new Date(p.fecha);
-      if (fechaPartido < hoy) return; // No mostrar partidos pasados
+      if (fechaPartido < hoy) continue;
 
       const div = document.createElement("div");
       div.className = "partido";
       const fechaFormateada = fechaPartido.toLocaleString();
       let jugadoresActuales = p.jugadores ? p.jugadores.length : 0;
       
-      const jugadoresListItems = p.jugadores && p.jugadores.length > 0
-        ? p.jugadores.map(jugador => `<li>${jugador}</li>`).join('')
+      // Obtener los nombres de los jugadores inscritos usando los emails guardados
+      const nombresJugadoresPromises = p.jugadores.map(email => getUserNameByEmail(email));
+      const nombresJugadores = await Promise.all(nombresJugadoresPromises);
+
+      const jugadoresListItems = nombresJugadores && nombresJugadores.length > 0
+        ? nombresJugadores.map(nombre => `<li>${nombre}</li>`).join('')
         : '<li>Nadie se ha unido aún.</li>';
 
       div.innerHTML = `
@@ -275,31 +367,47 @@ function cargarPartidos() {
         </div>
       `;
 
-      if (auth.currentUser && !p.jugadores.includes(auth.currentUser.email)) {
-        const btn = document.createElement("button");
-        btn.textContent = "Unirse";
-        btn.onclick = () => unirseAPartido(doc.id, p);
-        div.appendChild(btn);
-      } else if (auth.currentUser && p.jugadores.includes(auth.currentUser.email)) {
-        const spanUnido = document.createElement("span");
-        spanUnido.textContent = "¡Ya estás unido!";
-        spanUnido.style.color = "green";
-        div.appendChild(spanUnido);
+      if (auth.currentUser) {
+        // Verificar si el usuario actual ya está unido (usando email para la verificación)
+        const isJoined = p.jugadores.includes(auth.currentUser.email);
+
+        if (!isJoined) {
+          const btn = document.createElement("button");
+          btn.textContent = "Unirse";
+          btn.onclick = () => unirseAPartido(doc.id, p);
+          div.appendChild(btn);
+        } else { // Si ya está unido
+          const spanUnido = document.createElement("span");
+          spanUnido.textContent = "¡Ya estás unido!";
+          spanUnido.style.color = "green";
+          div.appendChild(spanUnido);
+        }
       }
       lista.appendChild(div);
-    });
+    }
   }).catch(e => mostrarMensaje("Error al cargar partidos: " + e.message, "error", "global-mensaje"));
 }
 
-function crearPartido() {
+async function crearPartido() {
   const lugar = document.getElementById("lugar").value.trim();
   const fechaInput = document.getElementById("fecha").value;
   const cupos = parseInt(document.getElementById("cupos").value);
   const descripcion = document.getElementById("descripcion").value.trim();
+  const currentUser = auth.currentUser;
 
   if (!lugar || !fechaInput || isNaN(cupos) || cupos < 1) {
     mostrarMensaje("Por favor, completa todos los campos correctamente.", "error", "mensaje-crear");
     return;
+  }
+  if (!currentUser) {
+      mostrarMensaje("Debes iniciar sesión para crear un partido.", "error", "mensaje-crear");
+      return;
+  }
+  // Asegurarse de que el usuario tenga un nombre antes de crear un partido
+  if (!currentUser.displayName) {
+      mostrarMensaje("Por favor, establece tu nombre de jugador en la sección 'Cuenta' antes de crear un partido.", "error", "mensaje-crear");
+      navigateTo('cuenta'); // Redirigir para que lo configure
+      return;
   }
 
   const fecha = new Date(fechaInput);
@@ -317,42 +425,56 @@ function crearPartido() {
     mostrarMensaje("No puedes crear partidos con más de 30 días de anticipación.", "error", "mensaje-crear");
     return;
   }
-
+  
+  // Guardamos el email como identificador único en el array de jugadores del partido.
+  // La visualización se hará obteniendo el nombre asociado a ese email.
   const partido = {
     lugar,
     fecha: fecha.toISOString(),
     cupos,
     descripcion,
-    creador: auth.currentUser.email,
-    jugadores: [auth.currentUser.email]
+    creador: currentUser.email, // Guarda el email del creador
+    jugadores: [currentUser.email] // Guarda los emails de los jugadores inscritos
   };
 
   addDoc(partidosCol, partido).then(() => {
-    mostrarMensaje("¡Partido creado exitosamente!", "exito", "global-mensaje"); // Mensaje global después de redirigir
-    // Redirigir a la vista de partidos después de crear
+    mostrarMensaje("¡Partido creado exitosamente!", "exito", "global-mensaje");
+    // Limpiar el formulario después de crear el partido
+    document.getElementById("lugar").value = '';
+    document.getElementById("fecha").value = '';
+    document.getElementById("cupos").value = '';
+    document.getElementById("descripcion").value = '';
     navigateTo('partidos');
   }).catch(e => mostrarMensaje("Error al crear partido: " + e.message, "error", "mensaje-crear"));
 }
 
-// Función para cargar mis partidos (para la sección 'Mis partidos' en la vista 'partidos')
-function cargarMisPartidos() {
+async function cargarMisPartidos() {
   const cont = document.getElementById("mis-partidos");
   if (!cont) return;
   cont.innerHTML = "";
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+      cont.innerHTML = "<p>Inicia sesión para ver tus partidos.</p>";
+      return;
+  }
 
-  const q = query(partidosCol, where("jugadores", "array-contains", auth.currentUser.email));
-  getDocs(q).then(snapshot => {
+  const q = query(partidosCol, where("jugadores", "array-contains", currentUser.email));
+  getDocs(q).then(async snapshot => {
     if (snapshot.empty) {
       cont.innerHTML = "<p>Aún no te has unido a ningún partido ni has creado uno.</p>";
       return;
     }
-    snapshot.forEach(doc => {
+    for (const doc of snapshot.docs) {
       const p = doc.data();
       const div = document.createElement("div");
       const fechaFormateada = new Date(p.fecha).toLocaleString();
       
-      const jugadoresListItems = p.jugadores && p.jugadores.length > 0
-        ? p.jugadores.map(jugador => `<li>${jugador}</li>`).join('')
+      // Obtener los nombres de los jugadores inscritos
+      const nombresJugadoresPromises = p.jugadores.map(email => getUserNameByEmail(email));
+      const nombresJugadores = await Promise.all(nombresJugadoresPromises);
+
+      const jugadoresListItems = nombresJugadores && nombresJugadores.length > 0
+        ? nombresJugadores.map(nombre => `<li>${nombre}</li>`).join('')
         : '<li>Nadie se ha unido aún.</li>';
 
       div.className = "partido";
@@ -369,17 +491,25 @@ function cargarMisPartidos() {
         </div>
       `;
       cont.appendChild(div);
-    });
+    }
   }).catch(e => mostrarMensaje("Error al cargar mis partidos: " + e.message, "error", "global-mensaje"));
 }
 
-window.unirseAPartido = function(id, partido) {
-  if (!auth.currentUser) {
+window.unirseAPartido = async function(id, partido) {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
     mostrarMensaje("Debes iniciar sesión para unirte a un partido.", "error", "global-mensaje");
-    navigateTo('cuenta'); // Redirige a la sección de cuenta
+    navigateTo('cuenta');
     return;
   }
-  if (partido.jugadores.includes(auth.currentUser.email)) {
+  // Asegurarse de que el usuario tenga un nombre antes de unirse
+  if (!currentUser.displayName) {
+      mostrarMensaje("Por favor, establece tu nombre de jugador en la sección 'Cuenta' antes de unirte a un partido.", "error", "global-mensaje");
+      navigateTo('cuenta'); // Redirigir para que lo configure
+      return;
+  }
+
+  if (partido.jugadores.includes(currentUser.email)) {
     mostrarMensaje("Ya estás unido a este partido.", "info", "global-mensaje");
     return;
   }
@@ -388,12 +518,11 @@ window.unirseAPartido = function(id, partido) {
     return;
   }
 
-  const nuevosJugadores = [...partido.jugadores, auth.currentUser.email];
+  const nuevosJugadores = [...partido.jugadores, currentUser.email]; // Se sigue guardando el email
   const docRef = doc(db, "partidos", id);
 
   updateDoc(docRef, { jugadores: nuevosJugadores }).then(() => {
     mostrarMensaje("Te has unido al partido exitosamente!", "exito", "global-mensaje");
-    // Recargar ambas listas en la vista de partidos para que se actualicen
     cargarPartidos();
     cargarMisPartidos();
   }).catch(e => mostrarMensaje("Error al unirse al partido: " + e.message, "error", "global-mensaje"));
@@ -401,13 +530,10 @@ window.unirseAPartido = function(id, partido) {
 
 // Inicializar la aplicación: determina la página a mostrar al cargar
 document.addEventListener('DOMContentLoaded', () => {
-    // Adjuntar el listener para el botón de crear partido
-    // Se hace aquí ya que el botón está presente en el DOM desde el inicio
     const btnCrear = document.getElementById("btnCrear");
     if (btnCrear) {
         btnCrear.addEventListener("click", crearPartido);
     }
-    // Determinar la página inicial al cargar la SPA
     const initialPath = window.location.hash.substring(1) || 'cuenta';
     navigateTo(initialPath);
 });
