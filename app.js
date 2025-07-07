@@ -23,7 +23,7 @@ import {
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
+    apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
   authDomain: "mi-potrero-partidos.firebaseapp.com",
   projectId: "mi-potrero-partidos",
   storageBucket: "mi-potrero-partidos.firebasestorage.app",
@@ -37,76 +37,12 @@ const db = getFirestore(app);
 const partidosCol = collection(db, "partidos");
 const usuariosCol = collection(db, "usuarios");
 
-// --- Variables para Google Maps (Restauradas) ---
-let autocomplete;
-let map;
-let marker;
+// --- Variables para Google Maps (ELIMINADAS) ---
+// let autocomplete;
+// let map;
+// let marker;
 
-// La función initMap debe ser global para que Google Maps la llame
-window.initMap = function() {
-  const lugarInput = document.getElementById('lugar');
-  const mapElement = document.getElementById('map');
-
-  // Solo inicializar si los elementos existen (para evitar errores en otras páginas/secciones)
-  if (lugarInput && mapElement && !autocomplete) { // Solo inicializar una vez
-    autocomplete = new google.maps.places.Autocomplete(lugarInput, {
-      types: ['establishment', 'point_of_interest'],
-      componentRestrictions: { 'country': ['ar'] } // Mendoza, Argentina
-    });
-
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (!place.geometry) {
-        mostrarMensaje("No se encontraron detalles para la entrada: '" + place.name + "'", "error", "mensaje-crear");
-        lugarInput.value = '';
-        lugarInput.removeAttribute('data-place-id');
-        mapElement.style.display = 'none';
-        return;
-      }
-
-      lugarInput.value = place.name;
-      lugarInput.setAttribute('data-place-id', place.place_id);
-
-      const isSportsVenue = place.types.includes('stadium') || 
-                            place.types.includes('sports_club') || 
-                            place.types.includes('park') || 
-                            place.types.includes('point_of_interest'); 
-
-      if (!isSportsVenue) {
-        mostrarMensaje("El lugar seleccionado no parece ser una cancha o recinto deportivo válido. Por favor, selecciona una cancha real de la lista.", "error", "mensaje-crear");
-        lugarInput.value = '';
-        lugarInput.removeAttribute('data-place-id');
-        mapElement.style.display = 'none';
-        return;
-      }
-
-      mapElement.style.display = 'block';
-      if (!map) {
-        map = new google.maps.Map(mapElement, {
-          center: place.geometry.location,
-          zoom: 17,
-        });
-        marker = new google.maps.Marker({
-          map: map,
-          position: place.geometry.location,
-          title: place.name
-        });
-      } else {
-        map.setCenter(place.geometry.location);
-        marker.setPosition(place.geometry.location);
-        marker.setTitle(place.name);
-      }
-    });
-
-    lugarInput.addEventListener('input', () => {
-        if (lugarInput.value === '') {
-            lugarInput.removeAttribute('data-place-id');
-            mapElement.style.display = 'none';
-        }
-    });
-  }
-};
-
+// SE ELIMINA LA FUNCIÓN initMap()
 
 // --- Variables para SPA ---
 const allSections = document.querySelectorAll('main section');
@@ -149,14 +85,14 @@ function navigateTo(path) {
   // Limpiar el estado del formulario "Crear Partido" al salir de él
   if (path !== 'crear') {
     const lugarInput = document.getElementById('lugar');
-    const mapElement = document.getElementById('map');
+    // const mapElement = document.getElementById('map'); // El mapa ya no existe
     if (lugarInput) {
       lugarInput.value = '';
-      lugarInput.removeAttribute('data-place-id');
+      // lugarInput.removeAttribute('data-place-id'); // Este atributo ya no se usa
     }
-    if (mapElement) {
-      mapElement.style.display = 'none';
-    }
+    // if (mapElement) { // El mapa ya no existe
+    //   mapElement.style.display = 'none';
+    // }
     const mensajeCrear = document.getElementById('mensaje-crear');
     if (mensajeCrear) mensajeCrear.textContent = '';
   }
@@ -176,9 +112,6 @@ function navigateTo(path) {
       break;
     case 'crear':
       showSection('crear-section');
-      // Asegurarse de que initMap se ha llamado y el autocomplete se adjunte
-      // Esto se manejará por la carga asíncrona de la API de Maps.
-      // `initMap` se llama globalmente, una vez que la API está lista.
       break;
     case 'partidos':
       showSection('partidos-section');
@@ -347,7 +280,8 @@ async function displayUserProfile(user) {
             cargarPartidos();
             cargarMisPartidos();
         }
-      } catch (error) {
+      }
+       catch (error) { // Error si se actualiza el nombre
         mostrarMensaje("Error al actualizar nombre: " + error.message, "error", "global-mensaje");
       }
     } else {
@@ -462,7 +396,7 @@ async function cargarPartidos() {
 async function crearPartido() {
   const lugarInput = document.getElementById("lugar");
   const lugar = lugarInput.value.trim();
-  const placeId = lugarInput.getAttribute('data-place-id');
+  // const placeId = lugarInput.getAttribute('data-place-id'); // ELIMINADO
   const fechaInput = document.getElementById("fecha").value;
   const cupos = parseInt(document.getElementById("cupos").value);
   const descripcion = document.getElementById("descripcion").value.trim();
@@ -482,31 +416,35 @@ async function crearPartido() {
       return;
   }
 
-  if (!placeId) {
-      mostrarMensaje("Por favor, selecciona un lugar válido del autocompletado de Google Maps.", "error", "mensaje-crear");
-      return;
-  }
+  // SE ELIMINA LA VALIDACIÓN DEL placeId
+  // if (!placeId) {
+  //     mostrarMensaje("Por favor, selecciona un lugar válido del autocompletado de Google Maps.", "error", "mensaje-crear");
+  //     return;
+  // }
 
-  const fecha = new Date(fechaInput);
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const maxFecha = new Date();
-  maxFecha.setDate(hoy.getDate() + 30);
+  const fecha = new Date();
+  fecha.setHours(0, 0, 0, 0); // Ajusta la fecha actual a las 00:00:00 para la comparación
+  
+  const fechaSeleccionada = new Date(fechaInput);
 
-  if (fecha < hoy) {
+  if (fechaSeleccionada < fecha) {
     mostrarMensaje("No puedes crear partidos en fechas pasadas.", "error", "mensaje-crear");
     return;
   }
 
-  if (fecha > maxFecha) {
+  const maxFecha = new Date();
+  maxFecha.setDate(fecha.getDate() + 30); // Usar 'fecha' aquí para asegurar 30 días desde el día actual, no la hora actual
+  maxFecha.setHours(23, 59, 59, 999); // Establecer al final del día para la comparación
+
+  if (fechaSeleccionada > maxFecha) {
     mostrarMensaje("No puedes crear partidos con más de 30 días de anticipación.", "error", "mensaje-crear");
     return;
   }
   
   const partido = {
     lugar: lugar,
-    placeId: placeId,
-    fecha: fecha.toISOString(),
+    // placeId: placeId, // ELIMINADO
+    fecha: fechaSeleccionada.toISOString(), // Usar fechaSeleccionada
     cupos,
     descripcion,
     creador: currentUser.email,
@@ -515,11 +453,9 @@ async function crearPartido() {
 
   addDoc(partidosCol, partido).then(() => {
     mostrarMensaje("¡Partido creado exitosamente!", "exito", "global-mensaje");
-    // Limpiar el formulario después de crear el partido
     lugarInput.value = '';
-    lugarInput.removeAttribute('data-place-id');
-    const mapElement = document.getElementById('map');
-    if (mapElement) mapElement.style.display = 'none';
+    // lugarInput.removeAttribute('data-place-id'); // Este atributo ya no se usa
+    // SE ELIMINA LA LÍNEA PARA OCULTAR EL MAPA
     document.getElementById("fecha").value = '';
     document.getElementById("cupos").value = '';
     document.getElementById("descripcion").value = '';
