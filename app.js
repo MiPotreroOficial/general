@@ -23,13 +23,13 @@ import {
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-  apiKey: "TU_API_KEY_AQUI",
-  authDomain: "TU_AUTH_DOMAIN_AQUI",
-  projectId: "TU_PROJECT_ID_AQUI",
-  storageBucket: "TU_STORAGE_BUCKET_AQUI",
-  messagingSenderId: "TU_MESSAGING_SENDER_ID_AQUI",
-  appId: "TU_APP_ID_AQUI",
-  measurementId: "TU_MEASUREMENT_ID_AQUI"
+  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
+  authDomain: "mi-potrero-partidos.firebaseapp.com",
+  projectId: "mi-potrero-partidos",
+  storageBucket: "mi-potrero-partidos.firebasestorage.app",
+  messagingSenderId: "555922222113",
+  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",
+  measurementId: "G-7LBJ29RXKM"
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
