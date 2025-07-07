@@ -23,7 +23,7 @@ import {
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-    apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
+  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
   authDomain: "mi-potrero-partidos.firebaseapp.com",
   projectId: "mi-potrero-partidos",
   storageBucket: "mi-potrero-partidos.firebasestorage.app",
@@ -36,13 +36,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const partidosCol = collection(db, "partidos");
 const usuariosCol = collection(db, "usuarios");
-
-// --- Variables para Google Maps (ELIMINADAS) ---
-// let autocomplete;
-// let map;
-// let marker;
-
-// SE ELIMINA LA FUNCIÓN initMap()
 
 // --- Variables para SPA ---
 const allSections = document.querySelectorAll('main section');
@@ -85,14 +78,9 @@ function navigateTo(path) {
   // Limpiar el estado del formulario "Crear Partido" al salir de él
   if (path !== 'crear') {
     const lugarInput = document.getElementById('lugar');
-    // const mapElement = document.getElementById('map'); // El mapa ya no existe
     if (lugarInput) {
       lugarInput.value = '';
-      // lugarInput.removeAttribute('data-place-id'); // Este atributo ya no se usa
     }
-    // if (mapElement) { // El mapa ya no existe
-    //   mapElement.style.display = 'none';
-    // }
     const mensajeCrear = document.getElementById('mensaje-crear');
     if (mensajeCrear) mensajeCrear.textContent = '';
   }
@@ -280,8 +268,7 @@ async function displayUserProfile(user) {
             cargarPartidos();
             cargarMisPartidos();
         }
-      }
-       catch (error) { // Error si se actualiza el nombre
+      } catch (error) {
         mostrarMensaje("Error al actualizar nombre: " + error.message, "error", "global-mensaje");
       }
     } else {
@@ -330,7 +317,8 @@ async function getUserNameByEmail(userEmail) {
     return userEmail;
 }
 
-async function cargarPartidos() {
+// Carga los partidos disponibles
+async function cargarPartidos() { // Convertido a async
   const lista = document.getElementById("lista-partidos");
   if (!lista) return;
   lista.innerHTML = "";
@@ -338,11 +326,13 @@ async function cargarPartidos() {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
-  getDocs(partidosCol).then(async snapshot => {
+  try {
+    const snapshot = await getDocs(partidosCol); // Usar await para el snapshot
     if (snapshot.empty) {
       lista.innerHTML = "<p>No hay partidos disponibles en este momento.</p>";
       return;
     }
+    // Usar for...of para asegurar que las promesas internas se resuelvan en orden
     for (const doc of snapshot.docs) {
       const p = doc.data();
       const fechaPartido = new Date(p.fecha);
@@ -353,8 +343,9 @@ async function cargarPartidos() {
       const fechaFormateada = fechaPartido.toLocaleString();
       let jugadoresActuales = p.jugadores ? p.jugadores.length : 0;
       
+      // Obtener los nombres de los jugadores inscritos usando los emails guardados
       const nombresJugadoresPromises = p.jugadores.map(email => getUserNameByEmail(email));
-      const nombresJugadores = await Promise.all(nombresJugadoresPromises);
+      const nombresJugadores = await Promise.all(nombresJugadoresPromises); // Esperar a que todos los nombres se resuelvan
 
       const jugadoresListItems = nombresJugadores && nombresJugadores.length > 0
         ? nombresJugadores.map(nombre => `<li>${nombre}</li>`).join('')
@@ -390,13 +381,14 @@ async function cargarPartidos() {
       }
       lista.appendChild(div);
     }
-  }).catch(e => mostrarMensaje("Error al cargar partidos: " + e.message, "error", "global-mensaje"));
+  } catch (e) {
+    mostrarMensaje("Error al cargar partidos: " + e.message, "error", "global-mensaje");
+  }
 }
 
 async function crearPartido() {
   const lugarInput = document.getElementById("lugar");
   const lugar = lugarInput.value.trim();
-  // const placeId = lugarInput.getAttribute('data-place-id'); // ELIMINADO
   const fechaInput = document.getElementById("fecha").value;
   const cupos = parseInt(document.getElementById("cupos").value);
   const descripcion = document.getElementById("descripcion").value.trim();
@@ -416,24 +408,17 @@ async function crearPartido() {
       return;
   }
 
-  // SE ELIMINA LA VALIDACIÓN DEL placeId
-  // if (!placeId) {
-  //     mostrarMensaje("Por favor, selecciona un lugar válido del autocompletado de Google Maps.", "error", "mensaje-crear");
-  //     return;
-  // }
-
-  const fecha = new Date();
-  fecha.setHours(0, 0, 0, 0); // Ajusta la fecha actual a las 00:00:00 para la comparación
-  
   const fechaSeleccionada = new Date(fechaInput);
-
-  if (fechaSeleccionada < fecha) {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0); // Ajusta la fecha actual a las 00:00:00 para la comparación
+  
+  if (fechaSeleccionada < hoy) {
     mostrarMensaje("No puedes crear partidos en fechas pasadas.", "error", "mensaje-crear");
     return;
   }
 
   const maxFecha = new Date();
-  maxFecha.setDate(fecha.getDate() + 30); // Usar 'fecha' aquí para asegurar 30 días desde el día actual, no la hora actual
+  maxFecha.setDate(hoy.getDate() + 30); // Usar 'hoy' aquí para asegurar 30 días desde el día actual, no la hora actual
   maxFecha.setHours(23, 59, 59, 999); // Establecer al final del día para la comparación
 
   if (fechaSeleccionada > maxFecha) {
@@ -443,7 +428,6 @@ async function crearPartido() {
   
   const partido = {
     lugar: lugar,
-    // placeId: placeId, // ELIMINADO
     fecha: fechaSeleccionada.toISOString(), // Usar fechaSeleccionada
     cupos,
     descripcion,
@@ -453,9 +437,8 @@ async function crearPartido() {
 
   addDoc(partidosCol, partido).then(() => {
     mostrarMensaje("¡Partido creado exitosamente!", "exito", "global-mensaje");
-    lugarInput.value = '';
-    // lugarInput.removeAttribute('data-place-id'); // Este atributo ya no se usa
-    // SE ELIMINA LA LÍNEA PARA OCULTAR EL MAPA
+    // Limpiar el formulario después de crear el partido
+    document.getElementById("lugar").value = '';
     document.getElementById("fecha").value = '';
     document.getElementById("cupos").value = '';
     document.getElementById("descripcion").value = '';
@@ -463,7 +446,7 @@ async function crearPartido() {
   }).catch(e => mostrarMensaje("Error al crear partido: " + e.message, "error", "mensaje-crear"));
 }
 
-async function cargarMisPartidos() {
+async function cargarMisPartidos() { // Convertido a async
   const cont = document.getElementById("mis-partidos");
   if (!cont) return;
   cont.innerHTML = "";
@@ -474,18 +457,21 @@ async function cargarMisPartidos() {
   }
 
   const q = query(partidosCol, where("jugadores", "array-contains", currentUser.email));
-  getDocs(q).then(async snapshot => {
+  try {
+    const snapshot = await getDocs(q); // Usar await para el snapshot
     if (snapshot.empty) {
       cont.innerHTML = "<p>Aún no te has unido a ningún partido ni has creado uno.</p>";
       return;
     }
+    // Usar for...of para asegurar que las promesas internas se resuelvan en orden
     for (const doc of snapshot.docs) {
       const p = doc.data();
       const div = document.createElement("div");
       const fechaFormateada = new Date(p.fecha).toLocaleString();
       
+      // Obtener los nombres de los jugadores inscritos
       const nombresJugadoresPromises = p.jugadores.map(email => getUserNameByEmail(email));
-      const nombresJugadores = await Promise.all(nombresJugadoresPromises);
+      const nombresJugadores = await Promise.all(nombresJugadoresPromises); // Esperar a que todos los nombres se resuelvan
 
       const jugadoresListItems = nombresJugadores && nombresJugadores.length > 0
         ? nombresJugadores.map(nombre => `<li>${nombre}</li>`).join('')
@@ -506,7 +492,9 @@ async function cargarMisPartidos() {
       `;
       cont.appendChild(div);
     }
-  }).catch(e => mostrarMensaje("Error al cargar mis partidos: " + e.message, "error", "global-mensaje"));
+  } catch (e) {
+    mostrarMensaje("Error al cargar mis partidos: " + e.message, "error", "global-mensaje");
+  }
 }
 
 window.unirseAPartido = async function(id, partido) {
