@@ -20,7 +20,7 @@ body {
 .sidebar {
   background-color: #2c4729; /* Color de fondo verde oscuro */
   color: #fff;
-  width: 220px;
+  width: 230px;
   padding: 2rem 1rem;
   display: flex;
   flex-direction: column;
