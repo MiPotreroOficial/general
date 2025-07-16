@@ -240,7 +240,14 @@ main {
 .active-section {
   display: block; /* O display: flex; si la sección es un contenedor flex */
 }
-
+.Titulo{
+  margin:1rem;
+  border:3px dash #414a41;
+}
+.Conocenos{
+  margin:1rem;
+  border:3px dash #414a41;
+}
 /* Estilos para las sub-secciones dentro de "Partidos" (mios.html original) */
 .sub-section {
     margin-bottom: 2rem; /* Espacio entre "Partidos disponibles" y "Mis partidos" */
