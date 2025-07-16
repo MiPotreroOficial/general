@@ -241,10 +241,14 @@ main {
   display: block; /* O display: flex; si la sección es un contenedor flex */
 }
 .Titulo{
+  width:100%;
+  height:100%;
   margin:1rem;
   border:3px dash #414a41;
 }
 .Conocenos{
+  width:100%;
+  height:100%;
   margin:1rem;
   border:3px dash #414a41;
 }
