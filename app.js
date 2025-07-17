@@ -555,22 +555,6 @@ async function getTeamNameById(teamId) {
     }
     return "Equipo Desconocido";
 }
-
-// Llenar el select de equipos rivales en la sección "Crear Partido"
-async function getTeamNameById(teamId) {
-    if (!teamId) return "Equipo Desconocido";
-    try {
-        const teamDocRef = doc(db, "equipos", teamId);
-        const teamDocSnap = await getDoc(teamDocRef);
-        if (teamDocSnap.exists()) {
-            return teamDocSnap.data().nombre;
-        }
-    } catch (error) {
-        console.error("Error al obtener nombre de equipo por ID:", error);
-    }
-    return "Equipo Desconocido";
-}
-
 // Llenar el select de equipos rivales en la sección "Crear Partido"
 async function populateEquipoRivalSelect() {
     const select = document.getElementById('equipoRivalSelect');
