@@ -18,24 +18,28 @@ import {
   updateDoc,
   doc,
   setDoc,
-  getDoc
+  getDoc,
+  arrayUnion, // Importa arrayUnion para añadir elementos a arrays
+  arrayRemove, // Importa arrayRemove para quitar elementos de arrays
+  deleteDoc // Importa deleteDoc para eliminar documentos
 } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-firestore.js";
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
-  authDomain: "mi-potrero-partidos.firebaseapp.com",
-  projectId: "mi-potrero-partidos",
-  storageBucket: "mi-potrero-partidos.firebasestorage.app",
-  messagingSenderId: "555922222113",
-  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",
-  measurementId: "G-7LBJ29RXKM"
+  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM", // REEMPLAZA CON TU API KEY REAL
+  authDomain: "mi-potrero-partidos.firebaseapp.com", // REEMPLAZA CON TU AUTH DOMAIN REAL
+  projectId: "mi-potrero-partidos",   // REEMPLAZA CON TU PROJECT ID REAL
+  storageBucket: "mi-potrero-partidos.firebasestorage.app", // REEMPLAZA CON TU STORAGE BUCKET REAL
+  messagingSenderId: "555922222113", // REEMPLAZA CON TU MESSAGING SENDER ID REAL
+  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",             // REEMPLAZA CON TU APP ID REAL
+  measurementId: "G-7LBJ29RXKM" // REEMPLAZA CON TU MEASUREMENT ID REAL (o quítalo si no usas Analytics)
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const partidosCol = collection(db, "partidos");
 const usuariosCol = collection(db, "usuarios");
+const equiposCol = collection(db, "equipos"); // ¡Nueva colección para equipos!
 
 // --- Variables para SPA ---
 const allSections = document.querySelectorAll('main section');
@@ -78,9 +82,9 @@ function navigateTo(path) {
   // Limpiar el estado del formulario "Crear Partido" al salir de él
   if (path !== 'crear') {
     const lugarInput = document.getElementById('lugar');
-    if (lugarInput) {
-      lugarInput.value = '';
-    }
+    if (lugarInput) lugarInput.value = '';
+    const equipoRivalSelect = document.getElementById('equipoRivalSelect');
+    if (equipoRivalSelect) equipoRivalSelect.innerHTML = '<option value="">Selecciona un equipo para invitar</option>'; // Limpiar y resetear
     const mensajeCrear = document.getElementById('mensaje-crear');
     if (mensajeCrear) mensajeCrear.textContent = '';
   }
@@ -100,6 +104,7 @@ function navigateTo(path) {
       break;
     case 'crear':
       showSection('crear-section');
+      populateEquipoRivalSelect(); // Cargar los equipos para invitar
       break;
     case 'partidos':
       showSection('partidos-section');
@@ -108,6 +113,7 @@ function navigateTo(path) {
       break;
     case 'cuenta':
       showSection('cuenta-section');
+      // onAuthStateChanged ya maneja lo que se muestra aquí
       break;
     case 'torneo':
       showSection('torneo-section');
@@ -135,7 +141,7 @@ window.addEventListener('popstate', () => {
   navigateTo(path);
 });
 
-// --- Lógica de Autenticación para Cuenta ---
+// --- Lógica de Autenticación para Cuenta (¡Con gestión de equipo!) ---
 function renderAuthForm(isLogin = false) {
   cuentaSection.innerHTML = `
     <h2>${isLogin ? 'Iniciar Sesión' : 'Registrarse'}</h2>
@@ -175,10 +181,13 @@ function setupAuthForms() {
 
         await updateProfile(user, { displayName: nombre });
 
+        // Inicializar el documento de usuario en Firestore con rol de capitán
         await setDoc(doc(db, "usuarios", user.uid), {
           email: user.email,
           nombre: nombre,
-          uid: user.uid
+          uid: user.uid,
+          esCapitan: false, // Por defecto no es capitán al registrarse
+          equipoCapitaneadoId: null
         });
 
         mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
@@ -219,15 +228,17 @@ function setupAuthForms() {
 
 async function displayUserProfile(user) {
   let userName = user.displayName;
+  let userDocData;
 
-  if (!userName && user.uid) {
+  if (user.uid) {
     const userDocRef = doc(db, "usuarios", user.uid);
     const userDocSnap = await getDoc(userDocRef);
-    if (userDocSnap.exists() && userDocSnap.data().nombre) {
-      userName = userDocSnap.data().nombre;
+    if (userDocSnap.exists()) {
+      userDocData = userDocSnap.data();
+      userName = userDocData.nombre || user.email; // Prefiere el nombre de Firestore
     }
   }
-  if (!userName) {
+  if (!userName) { // Fallback si no hay displayName ni nombre en Firestore
     userName = user.email;
   }
 
@@ -239,8 +250,14 @@ async function displayUserProfile(user) {
     <button id="btn-edit-name" style="margin-right: 10px;">Editar Nombre</button>
     <button id="btn-save-name" style="display:none; margin-right: 10px;">Guardar Nombre</button>
     <button id="cerrarSesion">Cerrar sesión</button>
+    
+    <div id="equipo-section-container" style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+      <h3>Mi Equipo</h3>
+      <div id="equipo-details"></div>
+    </div>
   `;
 
+  // Lógica para editar el nombre (personal del usuario)
   const btnEditName = document.getElementById('btn-edit-name');
   const btnSaveName = document.getElementById('btn-save-name');
   const editUserNameInput = document.getElementById('edit-user-name');
@@ -262,6 +279,22 @@ async function displayUserProfile(user) {
         await updateProfile(user, { displayName: newName });
         await setDoc(doc(db, "usuarios", user.uid), { nombre: newName }, { merge: true });
         
+        // Si el usuario es capitán, también actualiza su nombre en el equipo
+        if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
+            const equipoRef = doc(db, "equipos", userDocData.equipoCapitaneadoId);
+            const equipoSnap = await getDoc(equipoRef);
+            if(equipoSnap.exists()){
+                const equipoData = equipoSnap.data();
+                const updatedJugadoresNombres = equipoData.jugadoresNombres.map(name => 
+                    (name === userDocData.nombre ? newName : name) // Asume que el nombre anterior está allí
+                );
+                await updateDoc(equipoRef, {
+                    capitanNombre: newName,
+                    jugadoresNombres: updatedJugadoresNombres
+                });
+            }
+        }
+
         mostrarMensaje("Nombre actualizado correctamente.", "exito", "global-mensaje");
         displayUserProfile(user); 
         if (window.location.hash.substring(1) === 'partidos') {
@@ -276,12 +309,202 @@ async function displayUserProfile(user) {
     }
   });
 
+
   document.getElementById("cerrarSesion").addEventListener("click", () => {
     signOut(auth).then(() => {
       mostrarMensaje("Sesión cerrada.", "exito", "global-mensaje");
     }).catch(e => mostrarMensaje("Error al cerrar sesión: " + e.message, "error", "global-mensaje"));
   });
+
+  // Lógica de Equipo (NUEVO)
+  const equipoDetailsDiv = document.getElementById('equipo-details');
+  if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
+    // Es capitán, mostrar detalles del equipo
+    const equipoRef = doc(db, "equipos", userDocData.equipoCapitaneadoId);
+    const equipoSnap = await getDoc(equipoRef);
+    if (equipoSnap.exists()) {
+      const equipoData = equipoSnap.data();
+      equipoDetailsDiv.innerHTML = `
+        <p><strong>Eres Capitán del Equipo:</strong> ${equipoData.nombre}</p>
+        <p><strong>Jugadores:</strong></p>
+        <ul id="team-players-list">
+          ${equipoData.jugadoresNombres.map(jugador => `<li>${jugador}</li>`).join('')}
+        </ul>
+        <input type="email" id="invite-player-email" placeholder="Email del jugador a invitar">
+        <button id="btn-invite-player">Invitar Jugador</button>
+        <button id="btn-delete-team" style="background-color: #dc3545;">Eliminar Equipo</button>
+      `;
+      document.getElementById('btn-invite-player').addEventListener('click', () => invitePlayerToTeam(equipoData.id));
+      document.getElementById('btn-delete-team').addEventListener('click', () => deleteTeam(equipoData.id, user.uid));
+    } else {
+      // Equipo no encontrado en Firestore, corregir estado de usuario
+      await updateDoc(doc(db, "usuarios", user.uid), { esCapitan: false, equipoCapitaneadoId: null });
+      displayUserProfile(user); // Recargar la vista del perfil
+    }
+  } else {
+    // No es capitán, o su equipo no está asignado
+    const q = query(equiposCol, where("jugadoresUids", "array-contains", user.uid));
+    const jugadorEnEquiposSnap = await getDocs(q);
+
+    if (!jugadorEnEquiposSnap.empty) {
+        // Es jugador en al menos un equipo
+        let equiposJugador = [];
+        jugadorEnEquiposSnap.forEach(doc => {
+            equiposJugador.push(doc.data().nombre);
+        });
+        equipoDetailsDiv.innerHTML = `<p>Eres jugador en los equipos: ${equiposJugador.join(', ')}</p>`;
+    } else {
+        // No es capitán ni jugador en ningún equipo
+        equipoDetailsDiv.innerHTML = `
+            <p>Aún no eres capitán de ningún equipo. ¡Crea uno!</p>
+            <input type="text" id="new-team-name" placeholder="Nombre de tu nuevo equipo">
+            <button id="btn-create-team">Crear Equipo</button>
+        `;
+        document.getElementById('btn-create-team').addEventListener('click', createTeam);
+    }
+  }
 }
+
+// --- Funciones de Gestión de Equipo (NUEVAS) ---
+
+async function createTeam() {
+    const user = auth.currentUser;
+    if (!user) {
+        mostrarMensaje("Debes iniciar sesión para crear un equipo.", "error", "global-mensaje");
+        return;
+    }
+    const teamName = document.getElementById('new-team-name').value.trim();
+    if (!teamName) {
+        mostrarMensaje("Por favor, introduce un nombre para tu equipo.", "error", "global-mensaje");
+        return;
+    }
+
+    const userDocRef = doc(db, "usuarios", user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists() && userDocSnap.data().esCapitan) {
+        mostrarMensaje("Ya eres capitán de un equipo. No puedes crear otro.", "error", "global-mensaje");
+        return;
+    }
+    // Asegurarse de que el usuario tenga un nombre de jugador establecido
+    if (!user.displayName) {
+        mostrarMensaje("Por favor, establece tu nombre de jugador en tu perfil antes de crear un equipo.", "error", "global-mensaje");
+        return;
+    }
+
+    try {
+        const newTeamRef = await addDoc(equiposCol, {
+            nombre: teamName,
+            capitanUid: user.uid,
+            capitanEmail: user.email,
+            capitanNombre: user.displayName, // Usa el displayName de Auth
+            jugadoresUids: [user.uid],
+            jugadoresNombres: [user.displayName] // El capitán es el primer jugador
+        });
+
+        // Actualizar el estado del usuario para que sea capitán de este equipo
+        await updateDoc(userDocRef, {
+            esCapitan: true,
+            equipoCapitaneadoId: newTeamRef.id
+        });
+
+        mostrarMensaje(`Equipo "${teamName}" creado exitosamente!`, "exito", "global-mensaje");
+        displayUserProfile(user); // Recargar la vista del perfil
+    } catch (error) {
+        mostrarMensaje("Error al crear equipo: " + error.message, "error", "global-mensaje");
+    }
+}
+
+async function invitePlayerToTeam(teamId) {
+    const user = auth.currentUser;
+    if (!user) return; // Ya debería estar logueado
+    const playerEmailInput = document.getElementById('invite-player-email');
+    const playerEmail = playerEmailInput.value.trim();
+    if (!playerEmail) {
+        mostrarMensaje("Por favor, introduce el email del jugador a invitar.", "error", "global-mensaje");
+        return;
+    }
+    if (playerEmail === user.email) {
+        mostrarMensaje("Ya eres parte de tu equipo.", "info", "global-mensaje");
+        return;
+    }
+
+
+    try {
+        // 1. Buscar al jugador por email en la colección de usuarios
+        const q = query(usuariosCol, where("email", "==", playerEmail));
+        const playerSnap = await getDocs(q);
+        if (playerSnap.empty) {
+            mostrarMensaje("No se encontró ningún usuario registrado con ese email.", "error", "global-mensaje");
+            return;
+        }
+        const playerData = playerSnap.docs[0].data();
+        const playerUid = playerSnap.docs[0].id;
+        const playerName = playerData.nombre || playerEmail; // Usa el nombre de Firestore o el email
+
+        // 2. Verificar que el jugador no esté ya en el equipo
+        const teamRef = doc(db, "equipos", teamId);
+        const teamSnap = await getDoc(teamRef);
+        if (!teamSnap.exists()) {
+            mostrarMensaje("Error: Equipo no encontrado.", "error", "global-mensaje");
+            return;
+        }
+        const teamData = teamSnap.data();
+        if (teamData.jugadoresUids.includes(playerUid)) {
+            mostrarMensaje("Ese jugador ya está en tu equipo.", "info", "global-mensaje");
+            return;
+        }
+
+        // 3. Añadir al jugador al equipo
+        await updateDoc(teamRef, {
+            jugadoresUids: arrayUnion(playerUid),
+            jugadoresNombres: arrayUnion(playerName)
+        });
+
+        mostrarMensaje(`${playerName} ha sido añadido a tu equipo.`, "exito", "global-mensaje");
+        playerEmailInput.value = ''; // Limpiar campo
+        displayUserProfile(user); // Recargar perfil para ver cambios
+    } catch (error) {
+        mostrarMensaje("Error al invitar jugador: " + error.message, "error", "global-mensaje");
+    }
+}
+
+async function deleteTeam(teamId, captainUid) {
+    const user = auth.currentUser;
+    if (!user || user.uid !== captainUid) {
+        mostrarMensaje("No tienes permiso para eliminar este equipo.", "error", "global-mensaje");
+        return;
+    }
+
+    if (!confirm("¿Estás seguro de que quieres eliminar tu equipo? Esta acción es irreversible.")) {
+        return;
+    }
+    try {
+        const teamRef = doc(db, "equipos", teamId);
+        const teamSnap = await getDoc(teamRef);
+        if (!teamSnap.exists() || teamSnap.data().capitanUid !== user.uid) {
+            mostrarMensaje("No tienes permiso para eliminar este equipo.", "error", "global-mensaje");
+            return;
+        }
+
+        // 1. Desvincular al capitán de su equipo en su documento de usuario
+        await updateDoc(doc(db, "usuarios", user.uid), {
+            esCapitan: false,
+            equipoCapitaneadoId: null
+        });
+
+        // 2. Opcional: Si hubiese un campo 'equipoActualId' en los documentos de los jugadores,
+        // tendrías que iterar sobre ellos y limpiarlo. Por ahora, no lo tenemos.
+
+        // 3. Eliminar el equipo
+        await deleteDoc(teamRef);
+
+        mostrarMensaje("Equipo eliminado exitosamente.", "exito", "global-mensaje");
+        displayUserProfile(user); // Recargar la vista del perfil
+    } catch (error) {
+        mostrarMensaje("Error al eliminar equipo: " + error.message, "error", "global-mensaje");
+    }
+}
+
 
 onAuthStateChanged(auth, user => {
   if (user) {
@@ -301,8 +524,9 @@ onAuthStateChanged(auth, user => {
   }
 });
 
-// --- Funciones de Partidos ---
+// --- Funciones de Partidos (Modificadas para equipos) ---
 
+// Función para obtener el nombre de un usuario por su email
 async function getUserNameByEmail(userEmail) {
     if (!userEmail) return "Desconocido";
     try {
@@ -317,224 +541,50 @@ async function getUserNameByEmail(userEmail) {
     return userEmail;
 }
 
-// Carga los partidos disponibles
-async function cargarPartidos() { // Convertido a async
-  const lista = document.getElementById("lista-partidos");
-  if (!lista) return;
-  lista.innerHTML = "";
-
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-
-  try {
-    const snapshot = await getDocs(partidosCol); // Usar await para el snapshot
-    if (snapshot.empty) {
-      lista.innerHTML = "<p>No hay partidos disponibles en este momento.</p>";
-      return;
-    }
-    // Usar for...of para asegurar que las promesas internas se resuelvan en orden
-    for (const doc of snapshot.docs) {
-      const p = doc.data();
-      const fechaPartido = new Date(p.fecha);
-      if (fechaPartido < hoy) continue;
-
-      const div = document.createElement("div");
-      div.className = "partido";
-      const fechaFormateada = fechaPartido.toLocaleString();
-      let jugadoresActuales = p.jugadores ? p.jugadores.length : 0;
-      
-      // Obtener los nombres de los jugadores inscritos usando los emails guardados
-      const nombresJugadoresPromises = p.jugadores.map(email => getUserNameByEmail(email));
-      const nombresJugadores = await Promise.all(nombresJugadoresPromises); // Esperar a que todos los nombres se resuelvan
-
-      const jugadoresListItems = nombresJugadores && nombresJugadores.length > 0
-        ? nombresJugadores.map(nombre => `<li>${nombre}</li>`).join('')
-        : '<li>Nadie se ha unido aún.</li>';
-
-      div.innerHTML = `
-        <h3>${p.lugar}</h3>
-        <p class="fecha-partido"><strong>Fecha:</strong> ${fechaFormateada}</p>
-        <p class="descripcion-partido">${p.descripcion}</p>
-        <p class="cupos-partido"><strong>Jugadores:</strong> ${jugadoresActuales} / ${p.cupos}</p>
-        <div class="jugadores-list">
-          <strong>Inscritos:</strong>
-          <ul>
-            ${jugadoresListItems}
-          </ul>
-        </div>
-      `;
-
-      if (auth.currentUser) {
-        const isJoined = p.jugadores.includes(auth.currentUser.email);
-
-        if (!isJoined) {
-          const btn = document.createElement("button");
-          btn.textContent = "Unirse";
-          btn.onclick = () => unirseAPartido(doc.id, p);
-          div.appendChild(btn);
-        } else {
-          const spanUnido = document.createElement("span");
-          spanUnido.textContent = "¡Ya estás unido!";
-          spanUnido.style.color = "green";
-          div.appendChild(spanUnido);
+// Función para obtener el nombre de un equipo por su ID
+async function getTeamNameById(teamId) {
+    if (!teamId) return "Equipo Desconocido";
+    try {
+        const teamDocRef = doc(db, "equipos", teamId);
+        const teamDocSnap = await getDoc(teamDocRef);
+        if (teamDocSnap.exists()) {
+            return teamDocSnap.data().nombre;
         }
-      }
-      lista.appendChild(div);
+    } catch (error) {
+        console.error("Error al obtener nombre de equipo por ID:", error);
     }
-  } catch (e) {
-    mostrarMensaje("Error al cargar partidos: " + e.message, "error", "global-mensaje");
-  }
+    return "Equipo Desconocido";
 }
 
-async function crearPartido() {
-  const lugarInput = document.getElementById("lugar");
-  const lugar = lugarInput.value.trim();
-  const fechaInput = document.getElementById("fecha").value;
-  const cupos = parseInt(document.getElementById("cupos").value);
-  const descripcion = document.getElementById("descripcion").value.trim();
-  const currentUser = auth.currentUser;
+// Llenar el select de equipos rivales en la sección "Crear Partido"
+async function populateEquipoRivalSelect() {
+    const select = document.getElementById('equipoRivalSelect');
+    if (!select) return;
 
-  if (!lugar || !fechaInput || isNaN(cupos) || cupos < 1) {
-    mostrarMensaje("Por favor, completa todos los campos correctamente.", "error", "mensaje-crear");
-    return;
-  }
-  if (!currentUser) {
-      mostrarMensaje("Debes iniciar sesión para crear un partido.", "error", "mensaje-crear");
-      return;
-  }
-  if (!currentUser.displayName) {
-      mostrarMensaje("Por favor, establece tu nombre de jugador en la sección 'Cuenta' antes de crear un partido.", "error", "mensaje-crear");
-      navigateTo('cuenta');
-      return;
-  }
+    select.innerHTML = '<option value="">Selecciona un equipo para invitar (Opcional)</option>';
 
-  const fechaSeleccionada = new Date(fechaInput);
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0); // Ajusta la fecha actual a las 00:00:00 para la comparación
-  
-  if (fechaSeleccionada < hoy) {
-    mostrarMensaje("No puedes crear partidos en fechas pasadas.", "error", "mensaje-crear");
-    return;
-  }
+    try {
+        const user = auth.currentUser;
+        if (!user) { // Si no hay usuario, no se pueden cargar equipos
+            select.innerHTML = '<option value="">Inicia sesión para ver equipos</option>';
+            return;
+        }
 
-  const maxFecha = new Date();
-  maxFecha.setDate(hoy.getDate() + 30); // Usar 'hoy' aquí para asegurar 30 días desde el día actual, no la hora actual
-  maxFecha.setHours(23, 59, 59, 999); // Establecer al final del día para la comparación
+        const userDocRef = doc(db, "usuarios", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        const userDocData = userDocSnap.data();
+        
+        if (!userDocData || !userDocData.esCapitan || !userDocData.equipoCapitaneadoId) {
+             select.innerHTML = '<option value="">Debes ser capitán de un equipo para invitar</option>';
+             return;
+        }
 
-  if (fechaSeleccionada > maxFecha) {
-    mostrarMensaje("No puedes crear partidos con más de 30 días de anticipación.", "error", "mensaje-crear");
-    return;
-  }
-  
-  const partido = {
-    lugar: lugar,
-    fecha: fechaSeleccionada.toISOString(), // Usar fechaSeleccionada
-    cupos,
-    descripcion,
-    creador: currentUser.email,
-    jugadores: [currentUser.email]
-  };
+        const capitanEquipoId = userDocData.equipoCapitaneadoId;
 
-  addDoc(partidosCol, partido).then(() => {
-    mostrarMensaje("¡Partido creado exitosamente!", "exito", "global-mensaje");
-    // Limpiar el formulario después de crear el partido
-    document.getElementById("lugar").value = '';
-    document.getElementById("fecha").value = '';
-    document.getElementById("cupos").value = '';
-    document.getElementById("descripcion").value = '';
-    navigateTo('partidos');
-  }).catch(e => mostrarMensaje("Error al crear partido: " + e.message, "error", "mensaje-crear"));
-}
-
-async function cargarMisPartidos() { // Convertido a async
-  const cont = document.getElementById("mis-partidos");
-  if (!cont) return;
-  cont.innerHTML = "";
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-      cont.innerHTML = "<p>Inicia sesión para ver tus partidos.</p>";
-      return;
-  }
-
-  const q = query(partidosCol, where("jugadores", "array-contains", currentUser.email));
-  try {
-    const snapshot = await getDocs(q); // Usar await para el snapshot
-    if (snapshot.empty) {
-      cont.innerHTML = "<p>Aún no te has unido a ningún partido ni has creado uno.</p>";
-      return;
-    }
-    // Usar for...of para asegurar que las promesas internas se resuelvan en orden
-    for (const doc of snapshot.docs) {
-      const p = doc.data();
-      const div = document.createElement("div");
-      const fechaFormateada = new Date(p.fecha).toLocaleString();
-      
-      // Obtener los nombres de los jugadores inscritos
-      const nombresJugadoresPromises = p.jugadores.map(email => getUserNameByEmail(email));
-      const nombresJugadores = await Promise.all(nombresJugadoresPromises); // Esperar a que todos los nombres se resuelvan
-
-      const jugadoresListItems = nombresJugadores && nombresJugadores.length > 0
-        ? nombresJugadores.map(nombre => `<li>${nombre}</li>`).join('')
-        : '<li>Nadie se ha unido aún.</li>';
-
-      div.className = "partido";
-      div.innerHTML = `
-        <h3>${p.lugar}</h3>
-        <p class="fecha-partido"><strong>Fecha:</strong> ${fechaFormateada}</p>
-        <p class="descripcion-partido">${p.descripcion}</p>
-        <p class="cupos-partido"><strong>Jugadores:</strong> ${p.jugadores.length} / ${p.cupos}</p>
-        <div class="jugadores-list">
-          <strong>Inscritos:</strong>
-          <ul>
-            ${jugadoresListItems}
-          </ul>
-        </div>
-      `;
-      cont.appendChild(div);
-    }
-  } catch (e) {
-    mostrarMensaje("Error al cargar mis partidos: " + e.message, "error", "global-mensaje");
-  }
-}
-
-window.unirseAPartido = async function(id, partido) {
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-    mostrarMensaje("Debes iniciar sesión para unirte a un partido.", "error", "global-mensaje");
-    navigateTo('cuenta');
-    return;
-  }
-  if (!currentUser.displayName) {
-      mostrarMensaje("Por favor, establece tu nombre de jugador en la sección 'Cuenta' antes de unirte a un partido.", "error", "global-mensaje");
-      navigateTo('cuenta');
-      return;
-  }
-
-  if (partido.jugadores.includes(currentUser.email)) {
-    mostrarMensaje("Ya estás unido a este partido.", "info", "global-mensaje");
-    return;
-  }
-  if (partido.jugadores.length >= partido.cupos) {
-    mostrarMensaje("El partido ya está lleno.", "error", "global-mensaje");
-    return;
-  }
-
-  const nuevosJugadores = [...partido.jugadores, currentUser.email];
-  const docRef = doc(db, "partidos", id);
-
-  updateDoc(docRef, { jugadores: nuevosJugadores }).then(() => {
-    mostrarMensaje("Te has unido al partido exitosamente!", "exito", "global-mensaje");
-    cargarPartidos();
-    cargarMisPartidos();
-  }).catch(e => mostrarMensaje("Error al unirse al partido: " + e.message, "error", "global-mensaje"));
-};
-
-// Inicializar la aplicación: determina la página a mostrar al cargar
-document.addEventListener('DOMContentLoaded', () => {
-    const btnCrear = document.getElementById("btnCrear");
-    if (btnCrear) {
-        btnCrear.addEventListener("click", crearPartido);
-    }
-    const initialPath = window.location.hash.substring(1) || 'cuenta';
-    navigateTo(initialPath);
-});
+        const snapshot = await getDocs(equiposCol);
+        snapshot.forEach(doc => {
+            const equipo = doc.data();
+            // No mostrar mi propio equipo en la lista de rivales
+            if (doc.id !== capitanEquipoId) {
+                const option = document.createElement('option');
+                option.value
