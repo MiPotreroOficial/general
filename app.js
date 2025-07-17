@@ -26,13 +26,13 @@ import {
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
-  authDomain: "mi-potrero-partidos.firebaseapp.com",
-  projectId: "mi-potrero-partidos",
-  storageBucket: "mi-potrero-partidos.firebasestorage.app",
-  messagingSenderId: "555922222113",
-  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",
-  measurementId: "G-7LBJ29RXKM"
+  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM", // REEMPLAZA CON TU API KEY REAL
+  authDomain: "mi-potrero-partidos.firebaseapp.com", // REEMPLAZA CON TU AUTH DOMAIN REAL
+  projectId: "mi-potrero-partidos",   // REEMPLAZA CON TU PROJECT ID REAL
+  storageBucket: "mi-potrero-partidos.firebasestorage.app", // REEMPLAZA CON TU STORAGE BUCKET REAL
+  messagingSenderId: "555922222113", // REEMPLAZA CON TU MESSAGING SENDER ID REAL
+  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",             // REEMPLAZA CON TU APP ID REAL
+  measurementId: "G-7LBJ29RXKM" // REEMPLAZA CON TU MEASUREMENT ID REAL (o quítalo si no usas Analytics)
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -89,14 +89,12 @@ function navigateTo(path) {
     const fechaInput = document.getElementById('fecha');
     const tipoFutbolSelect = document.getElementById('tipoFutbol');
     const crearPartidoConEquipoSelect = document.getElementById('crearPartidoConEquipo');
-    // const equipoRivalSelect = document.getElementById('equipoRivalSelect'); // Eliminado
     const mensajeCrear = document.getElementById('mensaje-crear');
 
     if (lugarInput) lugarInput.value = '';
     if (fechaInput) fechaInput.value = '';
     if (tipoFutbolSelect) tipoFutbolSelect.value = '';
     if (crearPartidoConEquipoSelect) crearPartidoConEquipoSelect.innerHTML = '<option value="">Selecciona tu equipo</option>';
-    // if (equipoRivalSelect) equipoRivalSelect.innerHTML = '<option value="">Selecciona un equipo para invitar</option>'; // Eliminado
     if (mensajeCrear) mensajeCrear.textContent = '';
   }
 
@@ -590,17 +588,14 @@ async function getTeamNameById(teamId) {
 // Rellena el select de "Crear partido con mi equipo"
 async function populateCrearPartidoSelects() {
     const crearPartidoConEquipoSelect = document.getElementById('crearPartidoConEquipo');
-    // const equipoRivalSelect = document.getElementById('equipoRivalSelect'); // Eliminado
-    if (!crearPartidoConEquipoSelect) return; // Eliminar || !equipoRivalSelect
+    if (!crearPartidoConEquipoSelect) return;
 
     crearPartidoConEquipoSelect.innerHTML = '<option value="">Selecciona tu equipo</option>';
-    // equipoRivalSelect.innerHTML = '<option value="">Selecciona un equipo para invitar (Opcional)</option>'; // Eliminado
 
     try {
         const user = auth.currentUser;
         if (!user) { // Si no hay usuario, no se pueden cargar equipos
             crearPartidoConEquipoSelect.innerHTML = '<option value="">Inicia sesión para ver equipos</option>';
-            // equipoRivalSelect.innerHTML = '<option value="">Inicia sesión para ver equipos</option>'; // Eliminado
             return;
         }
 
@@ -623,10 +618,6 @@ async function populateCrearPartidoSelects() {
                 crearPartidoConEquipoSelect.appendChild(option);
             }
         }
-
-        // SE ELIMINA LA LÓGICA DE POPULAR EL SELECT DE EQUIPO RIVAL
-        // if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) { ... }
-        // else { equipoRivalSelect.innerHTML = '<option value="">Solo capitanes pueden invitar rivales</option>'; }
 
     } catch (error) {
         console.error("Error al cargar selects de creación de partido:", error);
@@ -745,7 +736,8 @@ async function crearPartido() {
   }
 
   // --- Obtener datos del equipo con el que se crea el partido ---
-  const equipoCreadorRef = doc(db, "equipos", crearPartidoConEquipoId); // <-- Usar esta variable
+  // AHORA DEFINIMOS equipoCreadorRef, equipoCreadorSnap, y equipoCreadorData aquí, dentro de la función.
+  const equipoCreadorRef = doc(db, "equipos", crearPartidoConEquipoId);
   const equipoCreadorSnap = await getDoc(equipoCreadorRef);
   if (!equipoCreadorSnap.exists()) {
       mostrarMensaje("Error: El equipo seleccionado para crear el partido no es válido.", "error", "mensaje-crear");
