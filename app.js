@@ -348,14 +348,16 @@ async function displayUserProfile(user) {
 
   // Lógica de Equipo
   const equipoDetailsDiv = document.getElementById('equipo-details');
+  // Asegúrate de que userDocData está disponible y que tiene el ID del equipo capitaneado
   if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
-    const equipoRef = doc(db, "equipos", userDocData.equipoCapitaneadoId);
+    const currentTeamId = userDocData.equipoCapitaneadoId; // <-- CAPTURA EL ID DEL EQUIPO AQUI DESDE userDocData
+
+    const equipoRef = doc(db, "equipos", currentTeamId); // Usa el ID capturado
     const equipoSnap = await getDoc(equipoRef);
+
     if (equipoSnap.exists()) {
       const equipoData = equipoSnap.data();
-      // CAPTURA EL ID DEL EQUIPO AQUÍ: usa equipoSnap.id
-      const currentTeamId = equipoSnap.id; 
-
+      
       equipoDetailsDiv.innerHTML = `
         <p><strong>Eres Capitán del Equipo:</strong> ${equipoData.nombre}</p>
         <p><strong>Jugadores:</strong></p>
@@ -381,8 +383,9 @@ async function displayUserProfile(user) {
 
       document.getElementById('btn-delete-team').addEventListener('click', () => deleteTeam(currentTeamId, user.uid));
     } else {
+      // Si el equipo no se encuentra en Firestore, corrige el estado del usuario
       await updateDoc(doc(db, "usuarios", user.uid), { esCapitan: false, equipoCapitaneadoId: null });
-      displayUserProfile(user);
+      displayUserProfile(user); // Recargar la vista del perfil
     }
   } else {
     const q = query(equiposCol, where("jugadoresUids", "array-contains", user.uid));
