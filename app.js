@@ -460,18 +460,27 @@ async function createTeam() {
     }
 }
 
+// Función searchAndAddPlayer
 async function searchAndAddPlayer(teamId) {
     const user = auth.currentUser;
     if (!user) {
         console.warn("searchAndAddPlayer: Usuario no autenticado.");
+        mostrarMensaje("Debes iniciar sesión para buscar jugadores.", "error", "global-mensaje");
+        return;
+    }
+
+    // --- AÑADIR ESTA COMPROBACIÓN ---
+    if (!teamId) {
+        console.error("searchAndAddPlayer: teamId es undefined o nulo. No se puede realizar la búsqueda.");
+        mostrarMensaje("Error interno: ID de equipo no disponible. Recarga la página o contacta soporte.", "error", "global-mensaje");
         return;
     }
 
     const searchPlayerNameInput = document.getElementById('search-player-name');
     const playerName = searchPlayerNameInput.value.trim();
-    const playerNameLower = playerName.toLowerCase(); // Convertir a minúsculas para la búsqueda
+    const playerNameLower = playerName.toLowerCase();
     const playerSearchResultsDiv = document.getElementById('player-search-results');
-    playerSearchResultsDiv.innerHTML = ''; 
+    playerSearchResultsDiv.innerHTML = '';
 
     if (!playerName) {
         mostrarMensaje("Por favor, introduce el nombre del jugador a buscar.", "error", "global-mensaje");
@@ -480,14 +489,13 @@ async function searchAndAddPlayer(teamId) {
 
     console.log(`Buscando jugador con nombre (original): '${playerName}'`);
     console.log(`Buscando jugador con nombre (minúsculas): '${playerNameLower}'`);
+    console.log(`Buscando para el teamId: '${teamId}'`); // Log para depuración
 
     try {
-        // Buscar jugadores por nombre (en minúsculas para coincidencia)
         const q = query(usuariosCol, where("nombre", "==", playerNameLower));
         const playerSnap = await getDocs(q);
 
-        console.log("Resultados de la consulta de jugadores:", playerSnap.docs.map(doc => doc.data().nombreOriginal || doc.data().nombre));
-
+        console.log("Resultados de la consulta de jugadores (raw):", playerSnap.docs.map(doc => doc.data()));
 
         if (playerSnap.empty) {
             playerSearchResultsDiv.innerHTML = '<p>No se encontraron jugadores con ese nombre.</p>';
@@ -497,15 +505,18 @@ async function searchAndAddPlayer(teamId) {
 
         const teamRef = doc(db, "equipos", teamId);
         const teamSnap = await getDoc(teamRef);
+        
+        // --- AÑADIR ESTA COMPROBACIÓN ---
         if (!teamSnap.exists()) {
-            mostrarMensaje("Error: El equipo no fue encontrado.", "error", "global-mensaje");
+            mostrarMensaje("Error: El equipo no fue encontrado. Asegúrate de que tu equipo exista.", "error", "global-mensaje");
             console.error("searchAndAddPlayer: Equipo no encontrado para ID:", teamId);
             return;
         }
         const teamData = teamSnap.data();
         console.log("Datos del equipo actual:", teamData);
 
-        let foundPlayersCount = 0; // Para saber cuántos jugadores procesamos
+
+        let foundPlayersCount = 0;
         playerSnap.forEach(playerDoc => {
             const playerData = playerDoc.data();
             const playerUid = playerDoc.id;
@@ -517,12 +528,12 @@ async function searchAndAddPlayer(teamId) {
                 playerSearchResultsDiv.innerHTML += `<p>${displayPlayerName} (${playerData.email}) - (Eres tú)</p>`;
                 return;
             }
-            if (teamData.jugadoresUids.includes(playerUid)) {
+            if (teamData.jugadoresUids && teamData.jugadoresUids.includes(playerUid)) { // Check if jugadoresUids exists
                 playerSearchResultsDiv.innerHTML += `<p>${displayPlayerName} (${playerData.email}) - (Ya está en tu equipo)</p>`;
                 return;
             }
 
-            foundPlayersCount++; // Incrementa solo si es un jugador que podemos añadir
+            foundPlayersCount++;
             const resultDiv = document.createElement('div');
             resultDiv.style.marginBottom = '5px';
             resultDiv.innerHTML = `
@@ -565,10 +576,9 @@ async function searchAndAddPlayer(teamId) {
 
     } catch (error) {
         mostrarMensaje("Error al buscar jugador: " + error.message, "error", "global-mensaje");
-        console.error("Detalle del error al buscar jugador:", error); // Esto atrapará errores de permiso o de red
+        console.error("Detalle del error al buscar jugador:", error);
     }
 }
-
 async function deleteTeam(teamId, captainUid) {
     const user = auth.currentUser;
     if (!user || user.uid !== captainUid) {
