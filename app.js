@@ -557,32 +557,68 @@ async function searchAndAddPlayer(teamId) {
         }
 
         playerSearchResultsDiv.querySelectorAll('button').forEach(button => {
-            button.addEventListener('click', async (e) => {
-                const targetButton = e.target;
-                const playerUidToAdd = targetButton.dataset.playerUid;
-                const playerNameToAdd = targetButton.dataset.playerName;
+            // Dentro de searchAndAddPlayer, en el listener del botón 'Añadir'
+button.addEventListener('click', async (e) => {
+    const targetButton = e.target;
+    const playerUidToAdd = targetButton.dataset.playerUid;
+    const playerNameToAdd = targetButton.dataset.playerName;
 
-                try {
-                    await updateDoc(teamRef, {
-                        jugadoresUids: arrayUnion(playerUidToAdd),
-                        jugadoresNombres: arrayUnion(playerNameToAdd)
-                    });
-                    mostrarMensaje(`${playerNameToAdd} ha sido añadido al equipo.`, "exito", "global-mensaje");
-                    searchPlayerNameInput.value = '';
-                    playerSearchResultsDiv.innerHTML = '';
-                    displayUserProfile(user);
-                } catch (error) {
-                    mostrarMensaje(`Error al añadir ${playerNameToAdd}: ` + error.message, "error", "global-mensaje");
-                    console.error("Detalle del error al añadir jugador:", error);
-                }
-            });
+    const user = auth.currentUser; // El capitán actual
+    if (!user) {
+        mostrarMensaje("Error: Usuario no autenticado.", "error", "global-mensaje");
+        return;
+    }
+
+    try {
+        // 1. Obtener datos del equipo para la invitación
+        const teamRef = doc(db, "equipos", teamId);
+        const teamSnap = await getDoc(teamRef);
+        if (!teamSnap.exists()) {
+            mostrarMensaje("Error: Equipo no encontrado.", "error", "global-mensaje");
+            return;
+        }
+        const teamData = teamSnap.data();
+
+        // 2. Comprobar si ya hay una invitación pendiente o si ya está en el equipo
+        const qExistingInvitation = query(
+            invitacionesCol,
+            where("equipoId", "==", teamId),
+            where("invitadoUid", "==", playerUidToAdd),
+            where("estado", "==", "pendiente")
+        );
+        const existingInvitationSnap = await getDocs(qExistingInvitation);
+
+        if (!existingInvitationSnap.empty) {
+            mostrarMensaje("Ya existe una invitación pendiente para este jugador en tu equipo.", "info", "global-mensaje");
+            return;
+        }
+
+        if (teamData.jugadoresUids.includes(playerUidToAdd)) {
+            mostrarMensaje("Este jugador ya es miembro de tu equipo.", "info", "global-mensaje");
+            return;
+        }
+
+        // 3. Crear el documento de invitación
+        await addDoc(invitacionesCol, {
+            equipoId: teamId,
+            equipoNombre: teamData.nombre,
+            capitanUid: user.uid,
+            capitanNombre: user.displayName || user.email, // O el nombreOriginal del capitán
+            invitadoUid: playerUidToAdd,
+            invitadoEmail: targetButton.dataset.playerEmail, // Asegúrate de pasar el email en el dataset
+            estado: "pendiente",
+            timestamp: serverTimestamp() // Usa serverTimestamp() para la fecha del servidor
         });
 
+        mostrarMensaje(`Invitación enviada a ${playerNameToAdd}.`, "exito", "global-mensaje");
+        searchPlayerNameInput.value = '';
+        playerSearchResultsDiv.innerHTML = '';
+        // No recargar displayUserProfile aquí, ya que no se añadió al equipo aún
     } catch (error) {
-        mostrarMensaje("Error al buscar jugador: " + error.message, "error", "global-mensaje");
-        console.error("Detalle del error al buscar jugador:", error);
+        mostrarMensaje(`Error al enviar invitación a ${playerNameToAdd}: ` + error.message, "error", "global-mensaje");
+        console.error("Detalle del error al enviar invitación:", error);
     }
-}
+});
 async function deleteTeam(teamId, captainUid) {
     const user = auth.currentUser;
     if (!user || user.uid !== captainUid) {
