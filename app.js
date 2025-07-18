@@ -26,13 +26,13 @@ import {
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM", 
-  authDomain: "mi-potrero-partidos.firebaseapp.com", 
-  projectId: "mi-potrero-partidos", 
-  storageBucket: "mi-potrero-partidos.firebasestorage.app", 
-  messagingSenderId: "555922222113", 
-  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760", 
-  measurementId: "G-7LBJ29RXKM"
+  apiKey: "TU_API_KEY_AQUI", // REEMPLAZA CON TU API KEY REAL
+  authDomain: "mi-potrero-partidos.firebaseapp.com", // REEMPLAZA CON TU AUTH DOMAIN REAL
+  projectId: "mi-potrero-partidos",   // REEMPLAZA CON TU PROJECT ID REAL
+  storageBucket: "mi-potrero-partidos.firebasestorage.app", // REEMPLAZA CON TU STORAGE BUCKET REAL
+  messagingSenderId: "555922222113", // REEMPLAZA CON TU MESSAGING SENDER ID REAL
+  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",             // REEMPLAZA CON TU APP ID REAL
+  measurementId: "G-7LBJ29RXKM" // REEMPLAZA CON TU MEASUREMENT ID REAL (o quítalo si no usas Analytics)
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -177,15 +177,16 @@ function setupAuthForms() {
       e.preventDefault();
       const email = registerForm.querySelector('#auth-email').value;
       const password = registerForm.querySelector('#auth-password').value;
-      const nombre = registerForm.querySelector('#auth-nombre').value.trim();
+      const nombre = registerForm.querySelector('#auth-nombre').value.trim(); // Nombre en minúsculas
+      const nombreLower = nombre.toLowerCase();
 
       if (!nombre) {
         mostrarMensaje("Por favor, introduce tu nombre de jugador.", "error", "global-mensaje");
         return;
       }
       
-      // VALIDACIÓN: Comprobar si el nombre ya existe para otro usuario
-      const qNombreExistente = query(usuariosCol, where("nombre", "==", nombre));
+      // VALIDACIÓN: Comprobar si el nombre ya existe para otro usuario (en minúsculas)
+      const qNombreExistente = query(usuariosCol, where("nombre", "==", nombreLower));
       const snapshotNombreExistente = await getDocs(qNombreExistente);
       if (!snapshotNombreExistente.empty) {
           mostrarMensaje("Este nombre de jugador ya está en uso. Por favor, elige otro.", "error", "global-mensaje");
@@ -196,11 +197,12 @@ function setupAuthForms() {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        await updateProfile(user, { displayName: nombre });
+        await updateProfile(user, { displayName: nombre }); // Guardar original para display
 
         await setDoc(doc(db, "usuarios", user.uid), {
           email: user.email,
-          nombre: nombre,
+          nombre: nombreLower, // Guardar nombre en minúsculas para búsqueda
+          nombreOriginal: nombre, // Guardar nombre original para display
           uid: user.uid,
           esCapitan: false,
           equipoCapitaneadoId: null
@@ -251,10 +253,10 @@ async function displayUserProfile(user) {
     const userDocSnap = await getDoc(userDocRef);
     if (userDocSnap.exists()) {
       userDocData = userDocSnap.data();
-      userName = userDocData.nombre || user.email; // Prefiere el nombre de Firestore
+      userName = userDocData.nombreOriginal || userDocData.nombre || user.email; // Prefiere el nombre original
     }
   }
-  if (!userName) { // Fallback si no hay displayName ni nombre en Firestore
+  if (!userName) {
     userName = user.email;
   }
 
@@ -289,12 +291,12 @@ async function displayUserProfile(user) {
 
   btnSaveName.addEventListener('click', async () => {
     const newName = editUserNameInput.value.trim();
+    const newNameLower = newName.toLowerCase();
     if (newName && user) {
-      // VALIDACIÓN: Comprobar si el nombre ya existe para OTRO usuario
-      const qNombreExistente = query(usuariosCol, where("nombre", "==", newName));
+      // VALIDACIÓN: Comprobar si el nombre ya existe para OTRO usuario (en minúsculas)
+      const qNombreExistente = query(usuariosCol, where("nombre", "==", newNameLower));
       const snapshotNombreExistente = await getDocs(qNombreExistente);
       if (!snapshotNombreExistente.empty) {
-          // Si el nombre existe, verificar si es el propio usuario o alguien más
           const foundDoc = snapshotNombreExistente.docs[0];
           if (foundDoc.id !== user.uid) { // Si el UID del documento encontrado no es el mío
               mostrarMensaje("Este nombre de jugador ya está en uso por otra persona. Por favor, elige otro.", "error", "global-mensaje");
@@ -304,7 +306,10 @@ async function displayUserProfile(user) {
 
       try {
         await updateProfile(user, { displayName: newName });
-        await setDoc(doc(db, "usuarios", user.uid), { nombre: newName }, { merge: true });
+        await setDoc(doc(db, "usuarios", user.uid), { 
+            nombre: newNameLower, // Actualizar nombre en minúsculas
+            nombreOriginal: newName // Actualizar nombre original
+        }, { merge: true });
         
         // Si el usuario es capitán, también actualiza su nombre en el equipo
         if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
@@ -314,7 +319,7 @@ async function displayUserProfile(user) {
                 const equipoData = equipoSnap.data();
                 // Actualiza el nombre del capitán y el nombre en la lista de jugadores del equipo
                 const updatedJugadoresNombres = equipoData.jugadoresNombres.map(name => 
-                    (name === userName ? newName : name) // Usa el 'userName' original de la carga de perfil
+                    (name === userName ? newName : name) 
                 );
                 await updateDoc(equipoRef, {
                     capitanNombre: newName,
@@ -362,16 +367,13 @@ async function displayUserProfile(user) {
         <div id="player-search-results" style="margin-top: 10px;"></div>
         <button id="btn-delete-team" style="background-color: #dc3545;">Eliminar Equipo</button>
       `;
-      // Listeners para la nueva funcionalidad de búsqueda
       const btnSearchPlayer = document.getElementById('btn-search-player');
       const searchPlayerNameInput = document.getElementById('search-player-name');
-      // const playerSearchResultsDiv = document.getElementById('player-search-results'); // No necesario aquí
 
       btnSearchPlayer.addEventListener('click', () => searchAndAddPlayer(equipoData.id));
-      // Permitir buscar con Enter
       searchPlayerNameInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
-          e.preventDefault(); // Evitar submit de formulario
+          e.preventDefault();
           searchAndAddPlayer(equipoData.id);
         }
       });
@@ -402,7 +404,7 @@ async function displayUserProfile(user) {
   }
 }
 
-// --- Funciones de Gestión de Equipo (Modificadas para búsqueda por nombre) ---
+// --- Funciones de Gestión de Equipo ---
 
 async function createTeam() {
     const user = auth.currentUser;
@@ -458,15 +460,15 @@ async function createTeam() {
     }
 }
 
-// CAMBIO COMPLETO EN LA LÓGICA DE INVITAR/BUSCAR JUGADOR
 async function searchAndAddPlayer(teamId) {
-    const user = auth.currentUser; // Capitán actual
+    const user = auth.currentUser;
     if (!user) return; 
 
     const searchPlayerNameInput = document.getElementById('search-player-name');
     const playerName = searchPlayerNameInput.value.trim();
+    const playerNameLower = playerName.toLowerCase(); // Convertir a minúsculas para la búsqueda
     const playerSearchResultsDiv = document.getElementById('player-search-results');
-    playerSearchResultsDiv.innerHTML = ''; // Limpiar resultados anteriores
+    playerSearchResultsDiv.innerHTML = ''; 
 
     if (!playerName) {
         mostrarMensaje("Por favor, introduce el nombre del jugador a buscar.", "error", "global-mensaje");
@@ -474,8 +476,8 @@ async function searchAndAddPlayer(teamId) {
     }
 
     try {
-        // Buscar jugadores por nombre (búsqueda exacta por ahora)
-        const q = query(usuariosCol, where("nombre", "==", playerName));
+        // Buscar jugadores por nombre (en minúsculas para coincidencia)
+        const q = query(usuariosCol, where("nombre", "==", playerNameLower));
         const playerSnap = await getDocs(q);
 
         if (playerSnap.empty) {
@@ -485,28 +487,33 @@ async function searchAndAddPlayer(teamId) {
 
         const teamRef = doc(db, "equipos", teamId);
         const teamSnap = await getDoc(teamRef);
+        // Asegurarse de que el equipo exista antes de acceder a sus datos
+        if (!teamSnap.exists()) {
+            mostrarMensaje("Error: El equipo no fue encontrado.", "error", "global-mensaje");
+            return;
+        }
         const teamData = teamSnap.data();
 
         playerSnap.forEach(playerDoc => {
             const playerData = playerDoc.data();
             const playerUid = playerDoc.id;
+            // Usar nombreOriginal para la visualización, si existe, si no, nombre
+            const displayPlayerName = playerData.nombreOriginal || playerData.nombre; 
 
-            // No añadir al propio capitán
             if (playerUid === user.uid) {
-                playerSearchResultsDiv.innerHTML += `<p>${playerData.nombre} (${playerData.email}) - (Eres tú)</p>`;
+                playerSearchResultsDiv.innerHTML += `<p>${displayPlayerName} (${playerData.email}) - (Eres tú)</p>`;
                 return;
             }
-            // No añadir si ya está en el equipo
             if (teamData.jugadoresUids.includes(playerUid)) {
-                playerSearchResultsDiv.innerHTML += `<p>${playerData.nombre} (${playerData.email}) - (Ya está en tu equipo)</p>`;
+                playerSearchResultsDiv.innerHTML += `<p>${displayPlayerName} (${playerData.email}) - (Ya está en tu equipo)</p>`;
                 return;
             }
 
             const resultDiv = document.createElement('div');
             resultDiv.style.marginBottom = '5px';
             resultDiv.innerHTML = `
-                <span>${playerData.nombre} (${playerData.email})</span>
-                <button data-player-uid="${playerUid}" data-player-name="${playerData.nombre}" 
+                <span>${displayPlayerName} (${playerData.email})</span>
+                <button data-player-uid="${playerUid}" data-player-name="${displayPlayerName}" 
                         style="margin-left: 10px; padding: 5px 10px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
                     Añadir
                 </button>
@@ -514,12 +521,11 @@ async function searchAndAddPlayer(teamId) {
             playerSearchResultsDiv.appendChild(resultDiv);
         });
 
-        // Añadir listeners a los botones "Añadir" de los resultados
         playerSearchResultsDiv.querySelectorAll('button').forEach(button => {
             button.addEventListener('click', async (e) => {
                 const targetButton = e.target;
                 const playerUidToAdd = targetButton.dataset.playerUid;
-                const playerNameToAdd = targetButton.dataset.playerName;
+                const playerNameToAdd = targetButton.dataset.playerName; // Este es el nombre original
 
                 try {
                     await updateDoc(teamRef, {
@@ -527,17 +533,19 @@ async function searchAndAddPlayer(teamId) {
                         jugadoresNombres: arrayUnion(playerNameToAdd)
                     });
                     mostrarMensaje(`${playerNameToAdd} ha sido añadido al equipo.`, "exito", "global-mensaje");
-                    searchPlayerNameInput.value = ''; // Limpiar campo
-                    playerSearchResultsDiv.innerHTML = ''; // Limpiar resultados
-                    displayUserProfile(user); // Recargar perfil para ver cambios
+                    searchPlayerNameInput.value = '';
+                    playerSearchResultsDiv.innerHTML = '';
+                    displayUserProfile(user);
                 } catch (error) {
                     mostrarMensaje(`Error al añadir ${playerNameToAdd}: ` + error.message, "error", "global-mensaje");
+                    console.error("Detalle del error al añadir jugador:", error);
                 }
             });
         });
 
     } catch (error) {
         mostrarMensaje("Error al buscar jugador: " + error.message, "error", "global-mensaje");
+        console.error("Detalle del error al buscar jugador:", error);
     }
 }
 
@@ -575,18 +583,17 @@ async function deleteTeam(teamId, captainUid) {
 }
 
 
-onAuthStateChanged(auth, async user => { // <-- Hacer esta función async
+onAuthStateChanged(auth, async user => {
   if (user) {
-    // Verificar si el documento del usuario existe en Firestore
     const userDocRef = doc(db, "usuarios", user.uid);
     const userDocSnap = await getDoc(userDocRef);
 
     if (!userDocSnap.exists()) {
-      // Si el documento NO existe, crearlo con valores por defecto
       try {
         await setDoc(userDocRef, {
           email: user.email,
-          nombre: user.displayName || user.email.split('@')[0], // Usa displayName o parte del email
+          nombre: (user.displayName || user.email.split('@')[0]).toLowerCase(), // Guardar en minúsculas
+          nombreOriginal: user.displayName || user.email.split('@')[0], // Guardar original
           uid: user.uid,
           esCapitan: false,
           equipoCapitaneadoId: null
@@ -622,7 +629,8 @@ async function getUserNameByEmail(userEmail) {
         const q = query(usuariosCol, where("email", "==", userEmail));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
-            return querySnapshot.docs[0].data().nombre || userEmail;
+            // Devuelve el nombreOriginal si existe, si no, nombre (minúsculas) o email
+            return querySnapshot.docs[0].data().nombreOriginal || querySnapshot.docs[0].data().nombre || userEmail;
         }
     } catch (error) {
         console.error("Error al obtener nombre por email:", error);
@@ -653,7 +661,7 @@ async function populateCrearPartidoSelects() {
 
     try {
         const user = auth.currentUser;
-        if (!user) { // Si no hay usuario, no se pueden cargar equipos
+        if (!user) {
             crearPartidoConEquipoSelect.innerHTML = '<option value="">Inicia sesión para ver equipos</option>';
             return;
         }
