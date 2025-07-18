@@ -253,10 +253,10 @@ async function displayUserProfile(user) {
     const userDocSnap = await getDoc(userDocRef);
     if (userDocSnap.exists()) {
       userDocData = userDocSnap.data();
-      userName = userDocData.nombreOriginal || userDocData.nombre || user.email; // Prefiere el nombre original
+      userName = userDocData.nombreOriginal || userDocData.nombre || user.email;
     }
   }
-  if (!userName) { // Fallback si no hay displayName ni nombre en Firestore
+  if (!userName) {
     userName = user.email;
   }
 
@@ -293,12 +293,11 @@ async function displayUserProfile(user) {
     const newName = editUserNameInput.value.trim();
     const newNameLower = newName.toLowerCase();
     if (newName && user) {
-      // VALIDACIÓN: Comprobar si el nombre ya existe para OTRO usuario (en minúsculas)
       const qNombreExistente = query(usuariosCol, where("nombre", "==", newNameLower));
       const snapshotNombreExistente = await getDocs(qNombreExistente);
       if (!snapshotNombreExistente.empty) {
           const foundDoc = snapshotNombreExistente.docs[0];
-          if (foundDoc.id !== user.uid) { // Si el UID del documento encontrado no es el mío
+          if (foundDoc.id !== user.uid) {
               mostrarMensaje("Este nombre de jugador ya está en uso por otra persona. Por favor, elige otro.", "error", "global-mensaje");
               return;
           }
@@ -307,17 +306,15 @@ async function displayUserProfile(user) {
       try {
         await updateProfile(user, { displayName: newName });
         await setDoc(doc(db, "usuarios", user.uid), { 
-            nombre: newNameLower, // Actualizar nombre en minúsculas
-            nombreOriginal: newName // Actualizar nombre original
+            nombre: newNameLower,
+            nombreOriginal: newName
         }, { merge: true });
         
-        // Si el usuario es capitán, también actualiza su nombre en el equipo
         if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
             const equipoRef = doc(db, "equipos", userDocData.equipoCapitaneadoId);
             const equipoSnap = await getDoc(equipoRef);
             if(equipoSnap.exists()){
                 const equipoData = equipoSnap.data();
-                // Actualiza el nombre del capitán y el nombre en la lista de jugadores del equipo
                 const updatedJugadoresNombres = equipoData.jugadoresNombres.map(name => 
                     (name === userName ? newName : name) 
                 );
@@ -356,6 +353,9 @@ async function displayUserProfile(user) {
     const equipoSnap = await getDoc(equipoRef);
     if (equipoSnap.exists()) {
       const equipoData = equipoSnap.data();
+      // CAPTURA EL ID DEL EQUIPO AQUÍ: usa equipoSnap.id
+      const currentTeamId = equipoSnap.id; 
+
       equipoDetailsDiv.innerHTML = `
         <p><strong>Eres Capitán del Equipo:</strong> ${equipoData.nombre}</p>
         <p><strong>Jugadores:</strong></p>
@@ -370,15 +370,16 @@ async function displayUserProfile(user) {
       const btnSearchPlayer = document.getElementById('btn-search-player');
       const searchPlayerNameInput = document.getElementById('search-player-name');
 
-      btnSearchPlayer.addEventListener('click', () => searchAndAddPlayer(equipoData.id));
+      // PASA currentTeamId a la función
+      btnSearchPlayer.addEventListener('click', () => searchAndAddPlayer(currentTeamId)); 
       searchPlayerNameInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          searchAndAddPlayer(equipoData.id);
+          searchAndAddPlayer(currentTeamId);
         }
       });
 
-      document.getElementById('btn-delete-team').addEventListener('click', () => deleteTeam(equipoData.id, user.uid));
+      document.getElementById('btn-delete-team').addEventListener('click', () => deleteTeam(currentTeamId, user.uid));
     } else {
       await updateDoc(doc(db, "usuarios", user.uid), { esCapitan: false, equipoCapitaneadoId: null });
       displayUserProfile(user);
