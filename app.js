@@ -177,7 +177,7 @@ function setupAuthForms() {
       e.preventDefault();
       const email = registerForm.querySelector('#auth-email').value;
       const password = registerForm.querySelector('#auth-password').value;
-      const nombre = registerForm.querySelector('#auth-nombre').value.trim(); // Nombre en minúsculas
+      const nombre = registerForm.querySelector('#auth-nombre').value.trim();
       const nombreLower = nombre.toLowerCase();
 
       if (!nombre) {
@@ -256,7 +256,7 @@ async function displayUserProfile(user) {
       userName = userDocData.nombreOriginal || userDocData.nombre || user.email; // Prefiere el nombre original
     }
   }
-  if (!userName) {
+  if (!userName) { // Fallback si no hay displayName ni nombre en Firestore
     userName = user.email;
   }
 
@@ -490,6 +490,7 @@ async function searchAndAddPlayer(teamId) {
         // Asegurarse de que el equipo exista antes de acceder a sus datos
         if (!teamSnap.exists()) {
             mostrarMensaje("Error: El equipo no fue encontrado.", "error", "global-mensaje");
+            console.error("Team not found for ID:", teamId);
             return;
         }
         const teamData = teamSnap.data();
@@ -497,7 +498,7 @@ async function searchAndAddPlayer(teamId) {
         playerSnap.forEach(playerDoc => {
             const playerData = playerDoc.data();
             const playerUid = playerDoc.id;
-            // Usar nombreOriginal para la visualización, si existe, si no, nombre
+            // Usar nombreOriginal para la visualización, si existe, si no, nombre (en minúsculas)
             const displayPlayerName = playerData.nombreOriginal || playerData.nombre; 
 
             if (playerUid === user.uid) {
@@ -592,8 +593,8 @@ onAuthStateChanged(auth, async user => {
       try {
         await setDoc(userDocRef, {
           email: user.email,
-          nombre: (user.displayName || user.email.split('@')[0]).toLowerCase(), // Guardar en minúsculas
-          nombreOriginal: user.displayName || user.email.split('@')[0], // Guardar original
+          nombre: (user.displayName || user.email.split('@')[0]).toLowerCase(),
+          nombreOriginal: user.displayName || user.email.split('@')[0],
           uid: user.uid,
           esCapitan: false,
           equipoCapitaneadoId: null
@@ -629,7 +630,6 @@ async function getUserNameByEmail(userEmail) {
         const q = query(usuariosCol, where("email", "==", userEmail));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
-            // Devuelve el nombreOriginal si existe, si no, nombre (minúsculas) o email
             return querySnapshot.docs[0].data().nombreOriginal || querySnapshot.docs[0].data().nombre || userEmail;
         }
     } catch (error) {
@@ -973,10 +973,53 @@ window.unirseAPartido = async function(partidoId, partidoData, miEquipoId, miEqu
 
   const partidoRef = doc(db, "partidos", partidoId);
 
+  // --- OBTENER JUGADORES DEL EQUIPO QUE SE UNE ---
+  const equipoQueSeUneRef = doc(db, "equipos", miEquipoId);
+  const equipoQueSeUneSnap = await getDoc(equipoQueSeUneRef);
+  if (!equipoQueSeUneSnap.exists()) {
+      mostrarMensaje("Error: Tu equipo no se encontró. No puedes unirte al partido.", "error", "global-mensaje");
+      return;
+  }
+  const equipoQueSeUneData = equipoQueSeUneSnap.data();
+  const jugadoresEquipoQueSeUneUids = equipoQueSeUneData.jugadoresUids || [];
+  const jugadoresEquipoQueSeUneNombres = equipoQueSeUneData.jugadoresNombres || [];
+
+  const maxJugadoresConfirmados = partidoData.cupos; // 5 o 7
+  const maxJugadoresConReserva = partidoData.tipoFutbol === "Futbol 5" ? 7 : 9; // 5+2 o 7+2
+
+
+  // --- VALIDACIÓN Y ASIGNACIÓN A RESERVA ---
+  if (jugadoresEquipoQueSeUneUids.length < maxJugadoresConfirmados) {
+      mostrarMensaje(`Tu equipo tiene ${jugadoresEquipoQueSeUneUids.length} jugadores. Necesita al menos ${maxJugadoresConfirmados} para este partido de ${partidoData.tipoFutbol}.`, "error", "global-mensaje");
+      return;
+  }
+  
+  let jugadoresConfirmados = [];
+  let jugadoresReserva = [];
+
+  // Los primeros N jugadores son confirmados, el resto son reserva
+  for (let i = 0; i < jugadoresEquipoQueSeUneUids.length; i++) {
+      if (i < maxJugadoresConfirmados) {
+          jugadoresConfirmados.push({ uid: jugadoresEquipoQueSeUneUids[i], nombre: jugadoresEquipoQueSeUneNombres[i] });
+      } else if (jugadoresReserva.length < (maxJugadoresConReserva - maxJugadoresConfirmados)) {
+          jugadoresReserva.push({ uid: jugadoresEquipoQueSeUneUids[i], nombre: jugadoresEquipoQueSeUneNombres[i] });
+      } else {
+          // Si hay más jugadores de los permitidos en total (confirmados + reserva), no los añade.
+          // Podrías mostrar un mensaje aquí si quieres.
+          // mostrarMensaje(`El equipo tiene más jugadores de los permitidos (${maxJugadoresConReserva} máx incluyendo reserva).`, "info", "global-mensaje");
+          break; // Detener la iteración si ya alcanzamos el máximo total
+      }
+  }
+
+
   try {
     await updateDoc(partidoRef, {
       equipo2Id: miEquipoId,
-      equipo2Nombre: miEquipoNombre
+      equipo2Nombre: miEquipoNombre,
+      jugadoresEquipo2Uids: jugadoresConfirmados.map(j => j.uid),
+      jugadoresEquipo2Nombres: jugadoresConfirmados.map(j => j.nombre),
+      jugadoresEquipo2ReservaUids: jugadoresReserva.map(j => j.uid),
+      jugadoresEquipo2ReservaNombres: jugadoresReserva.map(j => j.nombre)
     });
     mostrarMensaje("Tu equipo se ha unido al partido exitosamente!", "exito", "global-mensaje");
     cargarPartidos(); // Refrescar ambos listados
