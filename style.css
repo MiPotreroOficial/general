@@ -243,36 +243,50 @@ main {
 /* --- ESTILOS PARA LA SECCIÓN EXPLORAR (DISEÑO TIPO IMAGEN) --- */
 #explorar-section {
   padding: 2.5rem; /* El padding del .content-section */
-  max-width: 950px; /* Aumenta el ancho máximo para acomodar las 3 columnas */
-  display: flex; /* Habilitar flexbox para el contenedor de columnas */
-  align-items: flex-start; /* Alinea los ítems al inicio del contenedor flex */
-  justify-content: space-between; /* Distribuye el espacio entre las columnas */
-  gap: 20px; /* Espacio entre las columnas */
+  max-width: 950px; /* Ancho máximo para acomodar las 3 columnas */
+  
+  /* CAMBIO CLAVE: #explorar-section es ahora un contenedor flex en columna */
+  display: flex;
+  flex-direction: column; /* Apila los hijos (el título y el container) */
+  align-items: center; /* Centra el contenido horizontalmente dentro de la sección */
+  gap: 30px; /* Espacio entre el título y el contenedor de columnas */
 }
 
+/* Estilo para el título principal de la sección (si lo sacaste del container) */
+.section-main-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 1rem; /* Espacio debajo del título principal */
+    text-align: center;
+    width: 100%; /* Para que ocupe todo el ancho y no sea parte del flex de columnas */
+}
+
+
 .explorar-container {
-    display: flex;
-    width: 100%;
+    display: flex; /* Este es el contenedor flex para las 3 columnas */
+    width: 100%; /* Ocupa el 100% del ancho de #explorar-section */
     align-items: flex-start;
-    gap: 20px;
+    justify-content: space-between; /* Distribuye el espacio entre las columnas */
+    gap: 20px; /* Espacio entre las columnas */
 }
 
 .explorar-left-column {
-    flex-shrink: 0; /* No permite que la columna se encoja */
-    width: 200px; /* Ancho fijo para la columna izquierda */
+    flex-shrink: 0;
+    width: 200px;
     padding-right: 20px;
-    border-right: 1px solid #ccc; /* Línea separadora a la derecha */
+    border-right: 1px solid #ccc;
     text-align: left;
 }
 
-.explorar-title {
+.explorar-title { /* Este es el título interno de la columna izquierda */
     font-size: 1.5rem;
     font-weight: 700;
     color: #333;
     line-height: 1.2;
     margin-bottom: 0.5rem;
     padding-bottom: 0.5rem;
-    border-bottom: 1px solid #ccc; /* Línea debajo del título */
+    border-bottom: 1px solid #ccc;
 }
 
 .explorar-subtitle {
@@ -282,17 +296,13 @@ main {
 }
 
 .explorar-center-column {
-    flex-grow: 1; /* Permite que esta columna ocupe el espacio restante */
-    padding: 0 20px; /* Espacio a los lados */
-    /* Aquí puedes añadir un borde si quieres que se vea como un bloque separado */
-    /* border: 1px solid #ddd; */
-    /* border-radius: 8px; */
-    /* background-color: #f9f9f9; */
+    flex-grow: 1;
+    padding: 0 20px;
 }
 
-.explorar-center-column h2 {
-    font-size: 1.5rem;
-    font-weight: 700;
+.explorar-center-column h4 { /* CAMBIADO de h2 a h4 */
+    font-size: 1.3rem; /* Tamaño de fuente para este subtítulo */
+    font-weight: 600;
     color: #333;
     margin-bottom: 1rem;
     text-align: center;
@@ -307,55 +317,64 @@ main {
 }
 
 .explorar-right-column {
-    flex-shrink: 0; /* No permite que la columna se encoja */
-    width: 100px; /* Ancho fijo para el ícono de la cancha */
+    flex-shrink: 0;
+    width: 100px;
     padding-left: 20px;
-    border-left: 1px solid #ccc; /* Línea separadora a la izquierda */
+    border-left: 1px solid #ccc;
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
 .explorar-icon-field {
-    font-size: 4rem; /* Tamaño del ícono de cancha */
-    color: #555; /* Color del ícono */
+    font-size: 4rem;
+    color: #555;
     opacity: 0.7;
 }
 
 /* Media Queries para ajuste en pantallas más pequeñas */
 @media (max-width: 992px) {
   #explorar-section {
-    flex-direction: column; /* Apila las columnas en pantallas medianas */
-    max-width: 700px; /* Ajusta el ancho máximo */
-    gap: 30px; /* Más espacio entre secciones apiladas */
+    /* No se necesita flex-direction: column aquí, ya está en la regla base */
+    gap: 20px; /* Reducir gap en pantallas más pequeñas */
+  }
+
+  .explorar-container {
+    flex-direction: column; /* Apila las 3 columnas en pantallas medianas */
+    align-items: center; /* Centra las columnas apiladas */
+    gap: 30px; /* Espacio entre las columnas cuando están apiladas */
   }
 
   .explorar-left-column,
-  .explorar-right-column {
-    width: 100%; /* Ocupa todo el ancho */
+  .explorar-right-column,
+  .explorar-center-column {
+    width: 100%; /* Ocupa todo el ancho cuando están apiladas */
     border: none; /* Elimina los bordes verticales */
     padding: 0; /* Reinicia el padding */
     text-align: center; /* Centra el texto */
   }
-  .explorar-left-column .explorar-title,
-  .explorar-left-column .explorar-subtitle {
-      text-align: center;
-  }
+  
   .explorar-left-column {
-      border-bottom: 1px solid #eee; /* Añade un borde inferior */
+      border-bottom: 1px solid #eee; /* Añade un borde inferior para separar del centro */
       padding-bottom: 20px;
   }
   .explorar-right-column {
-      border-top: 1px solid #eee; /* Añade un borde superior */
+      border-top: 1px solid #eee; /* Añade un borde superior para separar del centro */
       padding-top: 20px;
   }
   .explorar-center-column {
       padding: 0; /* Reinicia el padding */
   }
+  .explorar-left-column .explorar-title,
+  .explorar-left-column .explorar-subtitle {
+      text-align: center; /* Centra el contenido de la columna izquierda apilada */
+  }
 }
 
 @media (max-width: 576px) {
-    /* Ajustes adicionales para móviles muy pequeños si es necesario */
+    .section-main-title {
+        font-size: 1.5rem; /* Ajuste de tamaño para móviles */
+    }
     .explorar-title {
         font-size: 1.3rem;
     }
@@ -364,6 +383,12 @@ main {
     }
     .explorar-icon-field {
         font-size: 3rem;
+    }
+    .explorar-center-column h4 { /* Ajuste del subtítulo de la columna central */
+        font-size: 1.1rem;
+    }
+    .explorar-center-column .Conocenos p {
+        font-size: 0.9rem;
     }
 }
 /* Estilos para las sub-secciones dentro de "Partidos" (mios.html original) */
