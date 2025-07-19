@@ -257,10 +257,10 @@ async function displayUserProfile(user) {
     const userDocSnap = await getDoc(userDocRef);
     if (userDocSnap.exists()) {
       userDocData = userDocSnap.data();
-      userName = userDocData.nombreOriginal || userDocData.nombre || user.email;
+      userName = userDocData.nombreOriginal || userDocData.nombre || user.email; // Prefiere el nombre original
     }
   }
-  if (!userName) {
+  if (!userName) { // Fallback si no hay displayName ni nombre en Firestore
     userName = user.email;
   }
 
@@ -356,7 +356,7 @@ async function displayUserProfile(user) {
     }).catch(e => mostrarMensaje("Error al cerrar sesión: " + e.message, "error", "global-mensaje"));
   });
 
-  // --- Lógica para mostrar la información del equipo (MODIFICADA) ---
+  // --- Lógica para mostrar la información del equipo (MODIFICADA para mostrar siempre Crear Equipo) ---
   let equipoHtmlContent = '';
   let isCaptainOfATeam = false; // Flag para saber si es capitán
 
@@ -393,9 +393,7 @@ async function displayUserProfile(user) {
         <button id="btn-delete-team" style="background-color: #dc3545;">Eliminar Equipo</button>
         <hr style="margin-top: 20px; margin-bottom: 20px; border-top: 1px dashed #ccc;">
       `;
-      // No adjuntamos listeners aquí todavía, se harán después de innerHTML final.
     } else {
-      // Si el equipo de capitán no se encuentra, corregir estado del usuario
       await updateDoc(doc(db, "usuarios", user.uid), { esCapitan: false, equipoCapitaneadoId: null });
       equipoHtmlContent += `<p>Error: Tu equipo de capitán no se encontró. Hemos corregido tu estado de capitán.</p>`;
       isCaptainOfATeam = false; // Resetear flag
@@ -415,27 +413,27 @@ async function displayUserProfile(user) {
       equipoHtmlContent += `</ul><hr style="margin-top: 20px; margin-bottom: 20px; border-top: 1px dashed #ccc;">`;
   }
 
-  // 4. Mostrar opción de crear equipo (si no es capitán y no es jugador en ningún equipo)
-  if (!isCaptainOfATeam && otherTeamsWherePlayer.length === 0) {
-      equipoHtmlContent += `
-          <p>Aún no eres capitán de ningún equipo ni jugador en uno. ¡Crea tu propio equipo!</p>
-          <input type="text" id="new-team-name" placeholder="Nombre de tu nuevo equipo">
-          <button id="btn-create-team">Crear Equipo</button>
-      `;
-  }
+  // 4. Opción de crear equipo (siempre visible ahora)
+  equipoHtmlContent += `
+      <h4>Crear Nuevo Equipo:</h4>
+      <p>¡Crea tu propio equipo y conviértete en capitán!</p>
+      <input type="text" id="new-team-name" placeholder="Nombre de tu nuevo equipo">
+      <button id="btn-create-team">Crear Equipo</button>
+  `;
+
 
   equipoDetailsDiv.innerHTML = equipoHtmlContent; // Asigna todo el HTML construido
 
   // --- Adjuntar todos los Event Listeners DESPUÉS de que el HTML esté en el DOM ---
 
-  // Para la gestión de capitán/jugadores (si el usuario es capitán)
+  // Para la gestión de capitán/jugadores (si el usuario es capitán y la sección se renderizó)
   if (isCaptainOfATeam && userDocData && userDocData.equipoCapitaneadoId) {
-      const currentTeamId = userDocData.equipoCapitaneadoId; // Asegura que el ID esté disponible
+      const currentTeamId = userDocData.equipoCapitaneadoId; 
       const btnSearchPlayer = document.getElementById('btn-search-player');
       const searchPlayerNameInput = document.getElementById('search-player-name');
       const btnDeleteTeam = document.getElementById('btn-delete-team');
 
-      if (btnSearchPlayer) { // Comprobar si el elemento existe antes de añadir listener
+      if (btnSearchPlayer) { 
           btnSearchPlayer.addEventListener('click', () => searchAndAddPlayer(currentTeamId));
       }
       if (searchPlayerNameInput) {
@@ -451,7 +449,7 @@ async function displayUserProfile(user) {
       }
   }
 
-  // Para la creación de equipo (si se mostró la opción)
+  // Para la creación de equipo (siempre visible ahora)
   const btnCreateTeam = document.getElementById('btn-create-team');
   if (btnCreateTeam) { // Comprobar si el elemento existe antes de añadir listener
       btnCreateTeam.addEventListener('click', createTeam);
