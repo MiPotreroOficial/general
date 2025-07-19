@@ -22,7 +22,8 @@ import {
   arrayUnion,
   arrayRemove,
   deleteDoc,
-  serverTimestamp // Importa serverTimestamp para las invitaciones
+  serverTimestamp, // Importa serverTimestamp para las invitaciones
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/11.8.0/firebase-firestore.js";
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
