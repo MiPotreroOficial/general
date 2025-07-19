@@ -257,14 +257,15 @@ async function displayUserProfile(user) {
     const userDocSnap = await getDoc(userDocRef);
     if (userDocSnap.exists()) {
       userDocData = userDocSnap.data();
-      userName = userDocData.nombreOriginal || userDocData.nombre || user.email; // Prefiere el nombre original
+      userName = userDocData.nombreOriginal || userDocData.nombre || user.email;
     }
   }
-  if (!userName) { // Fallback si no hay displayName ni nombre en Firestore
+  if (!userName) {
     userName = user.email;
   }
 
-  cuentaSection.innerHTML = `
+  // Estructura base del perfil
+  let profileHtml = `
     <h2>Mi perfil</h2>
     <p><strong>Email:</strong> ${user.email}</p>
     <p><strong>Nombre de Jugador:</strong> <span id="display-user-name">${userName}</span></p>
@@ -278,12 +279,17 @@ async function displayUserProfile(user) {
       <div id="equipo-details"></div>
     </div>
   `;
+  cuentaSection.innerHTML = profileHtml; // Renderiza la estructura base primero
 
+  // Obtener referencias a los botones y elementos recién creados
   const btnEditName = document.getElementById('btn-edit-name');
   const btnSaveName = document.getElementById('btn-save-name');
   const editUserNameInput = document.getElementById('edit-user-name');
   const displayUserNameSpan = document.getElementById('display-user-name');
+  const equipoDetailsDiv = document.getElementById('equipo-details');
 
+
+  // --- Event Listeners para el perfil de usuario ---
   btnEditName.addEventListener('click', () => {
     displayUserNameSpan.style.display = 'none';
     btnEditName.style.display = 'none';
@@ -297,12 +303,11 @@ async function displayUserProfile(user) {
     const newName = editUserNameInput.value.trim();
     const newNameLower = newName.toLowerCase();
     if (newName && user) {
-      // VALIDACIÓN: Comprobar si el nombre ya existe para OTRO usuario (en minúsculas)
       const qNombreExistente = query(usuariosCol, where("nombre", "==", newNameLower));
       const snapshotNombreExistente = await getDocs(qNombreExistente);
       if (!snapshotNombreExistente.empty) {
           const foundDoc = snapshotNombreExistente.docs[0];
-          if (foundDoc.id !== user.uid) { // Si el UID del documento encontrado no es el mío
+          if (foundDoc.id !== user.uid) {
               mostrarMensaje("Este nombre de jugador ya está en uso por otra persona. Por favor, elige otro.", "error", "global-mensaje");
               return;
           }
@@ -311,17 +316,15 @@ async function displayUserProfile(user) {
       try {
         await updateProfile(user, { displayName: newName });
         await setDoc(doc(db, "usuarios", user.uid), { 
-            nombre: newNameLower, // Actualizar nombre en minúsculas
-            nombreOriginal: newName // Actualizar nombre original
+            nombre: newNameLower,
+            nombreOriginal: newName
         }, { merge: true });
         
-        // Si el usuario es capitán, también actualiza su nombre en el equipo
         if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
             const equipoRef = doc(db, "equipos", userDocData.equipoCapitaneadoId);
             const equipoSnap = await getDoc(equipoRef);
             if(equipoSnap.exists()){
                 const equipoData = equipoSnap.data();
-                // Actualiza el nombre del capitán y el nombre en la lista de jugadores del equipo
                 const updatedJugadoresNombres = equipoData.jugadoresNombres.map(name => 
                     (name === userName ? newName : name) 
                 );
@@ -353,19 +356,33 @@ async function displayUserProfile(user) {
     }).catch(e => mostrarMensaje("Error al cerrar sesión: " + e.message, "error", "global-mensaje"));
   });
 
-  // Lógica de Equipo
-  const equipoDetailsDiv = document.getElementById('equipo-details');
-  if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
-    const currentTeamId = userDocData.equipoCapitaneadoId; // <-- CAPTURA EL ID DEL EQUIPO AQUI DESDE userDocData
+  // --- Lógica para mostrar la información del equipo (MODIFICADA) ---
+  let equipoHtmlContent = '';
+  let isCaptainOfATeam = false; // Flag para saber si es capitán
 
-    const equipoRef = doc(db, "equipos", currentTeamId); // Usa el ID capturado
+  // 1. Obtener todos los equipos a los que pertenece el usuario (como jugador o capitán)
+  const qAllUserTeams = query(equiposCol, where("jugadoresUids", "array-contains", user.uid));
+  const allUserTeamsSnap = await getDocs(qAllUserTeams);
+  
+  let teamsWherePlayer = [];
+  allUserTeamsSnap.forEach(doc => {
+      teamsWherePlayer.push({ id: doc.id, data: doc.data() });
+  });
+
+
+  // 2. Mostrar Equipo Capitaneado (si aplica)
+  if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
+    const currentTeamId = userDocData.equipoCapitaneadoId;
+    const equipoRef = doc(db, "equipos", currentTeamId);
     const equipoSnap = await getDoc(equipoRef);
 
     if (equipoSnap.exists()) {
       const equipoData = equipoSnap.data();
-      
-      equipoDetailsDiv.innerHTML = `
-        <p><strong>Eres Capitán del Equipo:</strong> ${equipoData.nombre}</p>
+      isCaptainOfATeam = true;
+
+      equipoHtmlContent += `
+        <h4>Capitán de Equipo:</h4>
+        <p>Eres Capitán del equipo <strong>${equipoData.nombre}</strong>.</p>
         <p><strong>Jugadores:</strong></p>
         <ul id="team-players-list">
           ${equipoData.jugadoresNombres.map(jugador => `<li>${jugador}</li>`).join('')}
@@ -374,46 +391,72 @@ async function displayUserProfile(user) {
         <button id="btn-search-player">Buscar</button>
         <div id="player-search-results" style="margin-top: 10px;"></div>
         <button id="btn-delete-team" style="background-color: #dc3545;">Eliminar Equipo</button>
+        <hr style="margin-top: 20px; margin-bottom: 20px; border-top: 1px dashed #ccc;">
       `;
-      const btnSearchPlayer = document.getElementById('btn-search-player');
-      const searchPlayerNameInput = document.getElementById('search-player-name');
-
-      // PASA currentTeamId a la función
-      btnSearchPlayer.addEventListener('click', () => searchAndAddPlayer(currentTeamId)); 
-      searchPlayerNameInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          searchAndAddPlayer(currentTeamId);
-        }
-      });
-
-      document.getElementById('btn-delete-team').addEventListener('click', () => deleteTeam(currentTeamId, user.uid));
+      // No adjuntamos listeners aquí todavía, se harán después de innerHTML final.
     } else {
-      // Si el equipo no se encuentra en Firestore, corrige el estado del usuario
+      // Si el equipo de capitán no se encuentra, corregir estado del usuario
       await updateDoc(doc(db, "usuarios", user.uid), { esCapitan: false, equipoCapitaneadoId: null });
-      displayUserProfile(user); // Recargar la vista del perfil
-    }
-  } else {
-    const q = query(equiposCol, where("jugadoresUids", "array-contains", user.uid));
-    const jugadorEnEquiposSnap = await getDocs(q);
-
-    if (!jugadorEnEquiposSnap.empty) {
-        let equiposJugador = [];
-        jugadorEnEquiposSnap.forEach(doc => {
-            equiposJugador.push({ id: doc.id, nombre: doc.data().nombre });
-        });
-        equipoDetailsDiv.innerHTML = `<p>Eres jugador en los equipos: ${equiposJugador.map(e => e.nombre).join(', ')}</p>`;
-    } else {
-        equipoDetailsDiv.innerHTML = `
-            <p>Aún no eres capitán de ningún equipo ni jugador en uno. ¡Crea tu propio equipo!</p>
-            <input type="text" id="new-team-name" placeholder="Nombre de tu nuevo equipo">
-            <button id="btn-create-team">Crear Equipo</button>
-        `;
-        document.getElementById('btn-create-team').addEventListener('click', createTeam);
+      equipoHtmlContent += `<p>Error: Tu equipo de capitán no se encontró. Hemos corregido tu estado de capitán.</p>`;
+      isCaptainOfATeam = false; // Resetear flag
     }
   }
-}
 
+  // 3. Mostrar otros equipos donde es jugador (si aplica y no es el capitán del equipo ya mostrado)
+  const otherTeamsWherePlayer = teamsWherePlayer.filter(team => 
+      !(isCaptainOfATeam && team.id === userDocData.equipoCapitaneadoId) // Excluir el equipo capitaneado si ya se mostró
+  );
+
+  if (otherTeamsWherePlayer.length > 0) {
+      equipoHtmlContent += `<h4>Jugador en otros Equipos:</h4><ul>`;
+      otherTeamsWherePlayer.forEach(team => {
+          equipoHtmlContent += `<li>${team.data.nombre}</li>`;
+      });
+      equipoHtmlContent += `</ul><hr style="margin-top: 20px; margin-bottom: 20px; border-top: 1px dashed #ccc;">`;
+  }
+
+  // 4. Mostrar opción de crear equipo (si no es capitán y no es jugador en ningún equipo)
+  if (!isCaptainOfATeam && otherTeamsWherePlayer.length === 0) {
+      equipoHtmlContent += `
+          <p>Aún no eres capitán de ningún equipo ni jugador en uno. ¡Crea tu propio equipo!</p>
+          <input type="text" id="new-team-name" placeholder="Nombre de tu nuevo equipo">
+          <button id="btn-create-team">Crear Equipo</button>
+      `;
+  }
+
+  equipoDetailsDiv.innerHTML = equipoHtmlContent; // Asigna todo el HTML construido
+
+  // --- Adjuntar todos los Event Listeners DESPUÉS de que el HTML esté en el DOM ---
+
+  // Para la gestión de capitán/jugadores (si el usuario es capitán)
+  if (isCaptainOfATeam && userDocData && userDocData.equipoCapitaneadoId) {
+      const currentTeamId = userDocData.equipoCapitaneadoId; // Asegura que el ID esté disponible
+      const btnSearchPlayer = document.getElementById('btn-search-player');
+      const searchPlayerNameInput = document.getElementById('search-player-name');
+      const btnDeleteTeam = document.getElementById('btn-delete-team');
+
+      if (btnSearchPlayer) { // Comprobar si el elemento existe antes de añadir listener
+          btnSearchPlayer.addEventListener('click', () => searchAndAddPlayer(currentTeamId));
+      }
+      if (searchPlayerNameInput) {
+          searchPlayerNameInput.addEventListener('keypress', (e) => {
+              if (e.key === 'Enter') {
+                  e.preventDefault();
+                  searchAndAddPlayer(currentTeamId);
+              }
+          });
+      }
+      if (btnDeleteTeam) {
+          btnDeleteTeam.addEventListener('click', () => deleteTeam(currentTeamId, user.uid));
+      }
+  }
+
+  // Para la creación de equipo (si se mostró la opción)
+  const btnCreateTeam = document.getElementById('btn-create-team');
+  if (btnCreateTeam) { // Comprobar si el elemento existe antes de añadir listener
+      btnCreateTeam.addEventListener('click', createTeam);
+  }
+}
 // --- Funciones de Gestión de Equipo ---
 
 async function createTeam() {
