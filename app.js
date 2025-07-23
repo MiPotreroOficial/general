@@ -260,7 +260,7 @@ function setupAuthForms() {
         }
       }
     });
-
+  }  
   if (loginForm) {
     loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
