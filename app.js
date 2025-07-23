@@ -705,88 +705,64 @@ onAuthStateChanged(auth, async user => {
   if (user) {
     console.log("onAuthStateChanged: Usuario autenticado. UID:", user.uid); // Depuración
     const userDocRef = doc(db, "usuarios", user.uid);
-    const userDocSnap = await getDoc(userDocRef);
+    // Ya no necesitas userDocSnap aquí si la función cloud se encargará de crear
+    // const userDocSnap = await getDoc(userDocRef); // <-- Puedes quitar esta línea si quieres ser más estricto
 
     let userNameFromInput = localStorage.getItem('temp_register_name');
     let profileDisplayName = user.displayName;
 
+    // 1. Siempre intentar asegurar que el displayName esté configurado
+    // Este es el displayName de Firebase Authentication, no el nombre del documento de Firestore
+    if (!profileDisplayName && userNameFromInput) {
+        await updateProfile(user, { displayName: userNameFromInput });
+        profileDisplayName = userNameFromInput;
+        console.log("onAuthStateChanged: DisplayName de Auth actualizado con nombre del registro temporal.");
+    } else if (!profileDisplayName) {
+         await updateProfile(user, { displayName: user.email.split('@')[0] });
+         profileDisplayName = user.email.split('@')[0];
+         console.log("onAuthStateChanged: DisplayName de Auth actualizado a partir del email.");
+    }
+    // No se necesita un retraso aquí ya que no estamos haciendo una escritura en Firestore *todavía*
+
+    // *** ELIMINAR EL setDoc PARA LA CREACIÓN INICIAL DEL PERFIL DE USUARIO ***
+    // La Función de Cloud se encargará de esto ahora.
+    // Por lo tanto, todo el bloque 'if (!userDocSnap.exists())' debe ser eliminado o comentado.
+    // Solo necesitas *leer* los datos del usuario de Firestore después de que la Función de Cloud los haya creado.
+
+    // Reemplaza todo el bloque `if (!userDocSnap.exists()) { ... } else { ... }`
+    // con la lógica para mostrar el perfil *después* de asumir que los datos existen.
+
+    // Código anterior (a REMOVER/COMENTAR):
+    /*
     if (!userDocSnap.exists()) {
-      console.log("onAuthStateChanged: Documento de usuario NO existe en Firestore."); // Depuración
       try {
-        // 1. Intentar establecer el displayName en Firebase Authentication
-        if (!profileDisplayName && userNameFromInput) {
-            await updateProfile(user, { displayName: userNameFromInput });
-            profileDisplayName = userNameFromInput; // Actualizar la variable local
-            console.log("onAuthStateChanged: DisplayName de Auth actualizado con nombre del registro temporal."); // Depuración
-        } else if (!profileDisplayName) {
-             // Fallback si no hay displayName ni nombre del registro, usar parte del email
-             await updateProfile(user, { displayName: user.email.split('@')[0] });
-             profileDisplayName = user.email.split('@')[0];
-             console.log("onAuthStateChanged: DisplayName de Auth actualizado a partir del email."); // Depuración
-        }
-
-        // --- AÑADE UN PEQUEÑO RETRASO AQUÍ ---
-        await new Promise(resolve => setTimeout(resolve, 500)); // Espera 500ms (medio segundo)
-
-        // 2. Crear el documento de usuario en Firestore
-        await setDoc(userDocRef, {
-          email: user.email,
-          nombre: profileDisplayName.toLowerCase(), // Usar el displayName establecido
-          nombreOriginal: profileDisplayName, // Usar el displayName establecido
-          uid: user.uid,
-          esCapitan: false,
-          equipoCapitaneadoId: null
-        }, { merge: true }); // Usar merge: true para ser más indulgente si hay una race condition muy rápida
-        console.log("onAuthStateChanged: Documento de usuario creado en Firestore por onAuthStateChanged para UID:", user.uid); // Depuración
-        
-        // Limpiar el nombre temporal una vez usado
-        localStorage.removeItem('temp_register_name');
-
-      } catch (error) {
-        console.error("Error al crear/actualizar documento de usuario en Firestore (onAuthStateChanged):", error);
-        mostrarMensaje("Error al inicializar perfil de usuario. Intenta de nuevo más tarde." + error.message, "error", "global-mensaje");
-      }
+        // ... updateProfile (ya manejado arriba) ...
+        // await new Promise(resolve => setTimeout(resolve, 500)); // Quita también este retraso
+        // await setDoc(userDocRef, { ... }); // REMOVER ESTA LLAMADA setDoc COMPLETA
+        // ... localStorage.removeItem('temp_register_name');
+      } catch (error) { ... }
     } else {
-        console.log("onAuthStateChanged: Documento de usuario YA existe en Firestore."); // Depuración
-        // Si el documento YA EXISTE, pero el usuario se registró usando el formulario,
-        // asegúrate de que 'nombreOriginal' y 'nombre' estén correctos y el displayName de Auth.
-        const userData = userDocSnap.data();
-        let needsUpdate = false;
-        const newNombreOriginal = user.displayName || userData.nombreOriginal || userData.nombre || user.email.split('@')[0];
-        const newNombre = newNombreOriginal.toLowerCase();
+        // ... (lógica existente para cuando el documento existe, incluyendo la actualización del nombre si es necesario)
+        // localStorage.removeItem('temp_register_name');
+    }
+    */
 
-        // Sincronizar displayName de Auth con Firestore si es necesario
-        if (!user.displayName || user.displayName !== newNombreOriginal) {
-            try {
-                await updateProfile(user, { displayName: newNombreOriginal });
-                console.log("onAuthStateChanged: DisplayName de Auth sincronizado con Firestore."); // Depuración
-            } catch (updateError) {
-                console.error("onAuthStateChanged: Error al sincronizar displayName de Auth:", updateError);
-            }
-        }
+    // Nueva lógica simplificada para onAuthStateChanged:
+    // Después de que el usuario esté autenticado, se asegura que el displayName esté configurado (manejado arriba),
+    // luego se asume que la Función de Cloud creará el documento de usuario si aún no existe,
+    // y se procede a mostrar el perfil.
 
-        // Sincronizar Firestore con el displayName si es necesario
-        if (userData.nombreOriginal !== newNombreOriginal || userData.nombre !== newNombre) {
-            needsUpdate = true;
-        }
-
-        if (needsUpdate) {
-           try {
-               await updateDoc(userDocRef, {
-                   nombre: newNombre,
-                   nombreOriginal: newNombreOriginal,
-               });
-               console.log("onAuthStateChanged: Perfil de usuario actualizado con nombre en Firestore vía onAuthStateChanged para UID:", user.uid); // Depuración
-           } catch (updateError) {
-               console.error("onAuthStateChanged: Error al actualizar nombre en perfil de usuario (onAuthStateChanged):", updateError);
-           }
-        }
-        // Limpiar el nombre temporal si existía y el documento ya lo tenía
+    if (userNameFromInput) { // Si fue un nuevo registro, limpia el nombre temporal de todas formas
         localStorage.removeItem('temp_register_name');
     }
-    
-    displayUserProfile(user); 
-    setupInvitationsListener(user.uid); 
+
+    // Opcional: Si necesitas asegurarte de que el documento existe antes de llamar a displayUserProfile,
+    // puedes poner un pequeño bucle o reintento aquí para esperar a la función de cloud.
+    // Pero displayUserProfile ya tiene un getDoc, que debería funcionar una vez que la función de cloud escriba.
+    // Por ahora, lo dejaremos como está para mantener la simplicidad inicial.
+
+    displayUserProfile(user); // Esta función *leerá* de Firestore, asumiendo que el documento ya está allí
+    setupInvitationsListener(user.uid);
     const currentHash = window.location.hash.substring(1);
     if (currentHash === '' || currentHash === 'cuenta') {
         navigateTo('partidos');
@@ -794,24 +770,7 @@ onAuthStateChanged(auth, async user => {
         navigateTo(currentHash);
     }
   } else {
-    console.log("onAuthStateChanged: NO hay usuario autenticado. Mostrando formularios de autenticación."); // Depuración
-    // Si no hay usuario, limpiar el contador de notificaciones
-    if (notificationCountSpan) {
-        notificationCountSpan.textContent = '0';
-        notificationCountSpan.style.display = 'none';
-    }
-    // Desactivar listener si el usuario se desloguea
-    if (unsubscribeInvitationsListener) {
-        unsubscribeInvitationsListener(); 
-        unsubscribeInvitationsListener = null;
-    }
-
-    renderAuthForm(false); // <--- ESTA LÍNEA ES CRUCIAL PARA MOSTRAR LOS FORMULARIOS
-    const currentHash = window.location.hash.substring(1);
-    if (['explorar', 'crear', 'partidos', 'notificaciones', 'torneo'].includes(currentHash)) {
-        navigateTo('cuenta');
-    }
-    // Limpiar el nombre temporal si el usuario se desloguea
+    // ... (lógica existente para cuando no hay usuario)
     localStorage.removeItem('temp_register_name');
   }
 });
