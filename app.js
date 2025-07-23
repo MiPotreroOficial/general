@@ -198,24 +198,25 @@ function setupAuthForms() {
       }
 
       try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
 
-        await updateProfile(user, { displayName: nombre }); // Guardar original para display
+        // Aquí ya tienes el 'nombre' del input, úsalo directamente.
+        await updateProfile(user, { displayName: nombre }); // Guardar original para display
 
-        await setDoc(doc(db, "usuarios", user.uid), {
-          email: user.email,
-          nombre: nombreLower, // Guardar nombre en minúsculas para búsqueda
-          nombreOriginal: nombre, // Guardar nombre original para display
-          uid: user.uid,
-          esCapitan: false,
-          equipoCapitaneadoId: null
-        });
+        await setDoc(doc(db, "usuarios", user.uid), {
+          email: user.email,
+          nombre: nombreLower, // Usa el nombre ya convertido
+          nombreOriginal: nombre, // Usa el nombre original del input
+          uid: user.uid,
+          esCapitan: false,
+          equipoCapitaneadoId: null
+        });
 
         mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
-      } catch (error) {
-        mostrarMensaje("Error al crear cuenta: " + error.message, "error", "global-mensaje");
-      }
+       } catch (error) {
+        mostrarMensaje("Error al crear cuenta: " + error.message, "error", "global-mensaje");
+      }
     });
   }
 
@@ -674,6 +675,10 @@ onAuthStateChanged(auth, async user => {
     const userDocSnap = await getDoc(userDocRef);
 
     if (!userDocSnap.exists()) {
+      // Si el documento NO existe, intenta crearlo.
+      // Podríamos añadir un pequeño retardo o un reintento si sospechamos de race conditions
+      // Sin embargo, tu formulario de registro YA lo crea.
+      // Si el error ocurre aquí, es porque el del formulario NO SE HABIA COMPLETADO O FALLÓ.
       try {
         await setDoc(userDocRef, {
           email: user.email,
@@ -682,22 +687,37 @@ onAuthStateChanged(auth, async user => {
           uid: user.uid,
           esCapitan: false,
           equipoCapitaneadoId: null
-        });
-        console.log("Documento de usuario creado en Firestore para UID:", user.uid);
+        }, { merge: true }); // Usar merge: true es más seguro para evitar sobrescribir si algo ya existe
+        console.log("Documento de usuario creado/actualizado en Firestore via onAuthStateChanged para UID:", user.uid);
       } catch (error) {
-        console.error("Error al crear documento de usuario en Firestore:", error);
+        console.error("Error al crear/actualizar documento de usuario en Firestore (onAuthStateChanged):", error);
         mostrarMensaje("Error al inicializar perfil de usuario. Intenta de nuevo más tarde.", "error", "global-mensaje");
       }
+    } else {
+      // Si el documento YA EXISTE, pero el usuario se registró usando el formulario,
+      // asegúrate de que 'nombreOriginal' y 'nombre' estén correctos.
+      // Esto es una medida de contingencia.
+      const userData = userDocSnap.data();
+      if (!userData.nombreOriginal || !userData.nombre) {
+         try {
+             await updateDoc(userDocRef, {
+                 nombre: (user.displayName || user.email.split('@')[0]).toLowerCase(),
+                 nombreOriginal: user.displayName || user.email.split('@')[0],
+             });
+             console.log("Perfil de usuario actualizado con nombre en Firestore via onAuthStateChanged para UID:", user.uid);
+         } catch (updateError) {
+             console.error("Error al actualizar nombre en perfil de usuario (onAuthStateChanged):", updateError);
+         }
+      }
     }
-    
-    displayUserProfile(user); 
-    // Llamar al listener de invitaciones cuando el usuario está logueado
-    setupInvitationsListener(user.uid); 
+
+    displayUserProfile(user);
+    setupInvitationsListener(user.uid);
     const currentHash = window.location.hash.substring(1);
     if (currentHash === '' || currentHash === 'cuenta') {
-        navigateTo('partidos');
+      navigateTo('partidos');
     } else {
-        navigateTo(currentHash);
+      navigateTo(currentHash);
     }
   } else {
     // Si no hay usuario, limpiar el contador de notificaciones
