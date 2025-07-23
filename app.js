@@ -28,12 +28,12 @@ import {
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM", 
-  authDomain: "mi-potrero-partidos.firebaseapp.com", 
-  projectId: "mi-potrero-partidos", 
-  storageBucket: "mi-potrero-partidos.firebasestorage.app", 
-  messagingSenderId: "555922222113", 
-  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760", 
+  apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM",
+  authDomain: "mi-potrero-partidos.firebaseapp.com",
+  projectId: "mi-potrero-partidos",
+  storageBucket: "mi-potrero-partidos.firebasestorage.app",
+  messagingSenderId: "555922222113",
+  appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",
   measurementId: "G-7LBJ29RXKM"
 };
 const app = initializeApp(firebaseConfig);
@@ -198,25 +198,42 @@ function setupAuthForms() {
       }
 
       try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
 
-        // Aquí ya tienes el 'nombre' del input, úsalo directamente.
-        await updateProfile(user, { displayName: nombre }); // Guardar original para display
+        // *** CAMBIOS APLICADOS AQUÍ: ***
+        // SE ELIMINA LA CREACIÓN/ACTUALIZACIÓN DEL PERFIL EN FIRESTORE Y DISPLAYNAME EN AUTH AQUÍ.
+        // ESTO AHORA LO MANEJARÁ EL LISTENER onAuthStateChanged para evitar duplicidad y race conditions.
+        // await updateProfile(user, { displayName: nombre });
+        // await setDoc(doc(db, "usuarios", user.uid), {
+        //   email: user.email,
+        //   nombre: nombreLower,
+        //   nombreOriginal: nombre,
+        //   uid: user.uid,
+        //   esCapitan: false,
+        //   equipoCapitaneadoId: null
+        // });
 
-        await setDoc(doc(db, "usuarios", user.uid), {
-          email: user.email,
-          nombre: nombreLower, // Usa el nombre ya convertido
-          nombreOriginal: nombre, // Usa el nombre original del input
-          uid: user.uid,
-          esCapitan: false,
-          equipoCapitaneadoId: null
-        });
+        // Puedes guardar el nombre de jugador en el localStorage temporalmente si es necesario,
+        // para que onAuthStateChanged lo use si no puede derivarlo (aunque ahora updateProfile lo maneja)
+        localStorage.setItem('temp_register_name', nombre);
+
 
         mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
-       } catch (error) {
-        mostrarMensaje("Error al crear cuenta: " + error.message, "error", "global-mensaje");
-      }
+      } catch (error) {
+        // Mejorar mensajes de error para el usuario
+        let errorMessage = "Error al crear cuenta: ";
+        if (error.code === 'auth/email-already-in-use') {
+            errorMessage += "Este correo electrónico ya está registrado.";
+        } else if (error.code === 'auth/invalid-email') {
+            errorMessage += "El formato del correo electrónico es inválido.";
+        } else if (error.code === 'auth/weak-password') {
+            errorMessage += "La contraseña es demasiado débil (debe tener al menos 6 caracteres).";
+        } else {
+            errorMessage += error.message;
+        }
+        mostrarMensaje(errorMessage, "error", "global-mensaje");
+      }
     });
   }
 
@@ -229,7 +246,17 @@ function setupAuthForms() {
         await signInWithEmailAndPassword(auth, email, password);
         mostrarMensaje("Sesión iniciada correctamente. ¡Bienvenido!", "exito", "global-mensaje");
       } catch (error) {
-        mostrarMensaje("Error al iniciar sesión: " + error.message, "error", "global-mensaje");
+        let errorMessage = "Error al iniciar sesión: ";
+        if (error.code === 'auth/invalid-credential') { // Nuevo código para login fallido
+            errorMessage += "Credenciales incorrectas. Verifica tu email y contraseña.";
+        } else if (error.code === 'auth/user-not-found') {
+            errorMessage += "Usuario no encontrado.";
+        } else if (error.code === 'auth/wrong-password') {
+            errorMessage += "Contraseña incorrecta.";
+        } else {
+            errorMessage += error.message;
+        }
+        mostrarMensaje(errorMessage, "error", "global-mensaje");
       }
     });
   }
@@ -258,7 +285,8 @@ async function displayUserProfile(user) {
     const userDocSnap = await getDoc(userDocRef);
     if (userDocSnap.exists()) {
       userDocData = userDocSnap.data();
-      userName = userDocData.nombreOriginal || userDocData.nombre || user.email; // Prefiere el nombre original
+      // Preferir nombreOriginal de Firestore si existe, si no, displayName de Auth, si no, email
+      userName = userDocData.nombreOriginal || userDocData.nombre || user.email;
     }
   }
   if (!userName) { // Fallback si no hay displayName ni nombre en Firestore
@@ -674,50 +702,92 @@ onAuthStateChanged(auth, async user => {
     const userDocRef = doc(db, "usuarios", user.uid);
     const userDocSnap = await getDoc(userDocRef);
 
+    // *** CAMBIOS APLICADOS AQUÍ: Lógica consolidada para asegurar el documento de usuario en Firestore ***
+    // Y para establecer/sincronizar el displayName en Firebase Authentication
+
+    let userNameFromInput = localStorage.getItem('temp_register_name'); // Recupera el nombre del registro
+    let profileDisplayName = user.displayName; // Nombre actual de Firebase Auth
+
+    // Si el documento de usuario no existe en Firestore
     if (!userDocSnap.exists()) {
-      // Si el documento NO existe, intenta crearlo.
-      // Podríamos añadir un pequeño retardo o un reintento si sospechamos de race conditions
-      // Sin embargo, tu formulario de registro YA lo crea.
-      // Si el error ocurre aquí, es porque el del formulario NO SE HABIA COMPLETADO O FALLÓ.
       try {
+        // Intentar establecer el displayName en Firebase Authentication si no está seteado
+        if (!profileDisplayName && userNameFromInput) {
+            await updateProfile(user, { displayName: userNameFromInput });
+            profileDisplayName = userNameFromInput; // Actualizar la variable local
+            console.log("DisplayName de Auth actualizado con nombre del registro temporal.");
+        } else if (!profileDisplayName) {
+            // Fallback si no hay displayName ni nombre del registro, usar parte del email
+            await updateProfile(user, { displayName: user.email.split('@')[0] });
+            profileDisplayName = user.email.split('@')[0];
+            console.log("DisplayName de Auth actualizado a partir del email.");
+        }
+
+        // Crear el documento de usuario en Firestore
         await setDoc(userDocRef, {
           email: user.email,
-          nombre: (user.displayName || user.email.split('@')[0]).toLowerCase(),
-          nombreOriginal: user.displayName || user.email.split('@')[0],
+          nombre: profileDisplayName.toLowerCase(), // Usar el displayName establecido
+          nombreOriginal: profileDisplayName, // Usar el displayName establecido
           uid: user.uid,
           esCapitan: false,
           equipoCapitaneadoId: null
-        }, { merge: true }); // Usar merge: true es más seguro para evitar sobrescribir si algo ya existe
-        console.log("Documento de usuario creado/actualizado en Firestore via onAuthStateChanged para UID:", user.uid);
+        }, { merge: true }); // Usar merge: true para ser más indulgente si hay una race condition muy rápida
+        console.log("Documento de usuario creado en Firestore por onAuthStateChanged para UID:", user.uid);
+        
+        // Limpiar el nombre temporal una vez usado
+        localStorage.removeItem('temp_register_name');
+
       } catch (error) {
         console.error("Error al crear/actualizar documento de usuario en Firestore (onAuthStateChanged):", error);
         mostrarMensaje("Error al inicializar perfil de usuario. Intenta de nuevo más tarde.", "error", "global-mensaje");
       }
     } else {
       // Si el documento YA EXISTE, pero el usuario se registró usando el formulario,
-      // asegúrate de que 'nombreOriginal' y 'nombre' estén correctos.
-      // Esto es una medida de contingencia.
+      // asegúrate de que 'nombreOriginal' y 'nombre' estén correctos y el displayName de Auth.
       const userData = userDocSnap.data();
-      if (!userData.nombreOriginal || !userData.nombre) {
+      let needsUpdate = false;
+      const newNombreOriginal = user.displayName || userData.nombreOriginal || userData.nombre || user.email.split('@')[0];
+      const newNombre = newNombreOriginal.toLowerCase();
+
+      // Sincronizar displayName de Auth con Firestore si es necesario
+      if (!user.displayName || user.displayName !== newNombreOriginal) {
+          try {
+              await updateProfile(user, { displayName: newNombreOriginal });
+              console.log("DisplayName de Auth sincronizado con Firestore.");
+          } catch (updateError) {
+              console.error("Error al sincronizar displayName de Auth:", updateError);
+          }
+      }
+
+      // Sincronizar Firestore con el displayName si es necesario
+      if (userData.nombreOriginal !== newNombreOriginal || userData.nombre !== newNombre) {
+          needsUpdate = true;
+      }
+
+      if (needsUpdate) {
          try {
              await updateDoc(userDocRef, {
-                 nombre: (user.displayName || user.email.split('@')[0]).toLowerCase(),
-                 nombreOriginal: user.displayName || user.email.split('@')[0],
+                 nombre: newNombre,
+                 nombreOriginal: newNombreOriginal,
              });
              console.log("Perfil de usuario actualizado con nombre en Firestore via onAuthStateChanged para UID:", user.uid);
          } catch (updateError) {
              console.error("Error al actualizar nombre en perfil de usuario (onAuthStateChanged):", updateError);
          }
       }
+      // Limpiar el nombre temporal si existía y el documento ya lo tenía
+      localStorage.removeItem('temp_register_name');
     }
-
-    displayUserProfile(user);
-    setupInvitationsListener(user.uid);
+    
+    // Aquí, user.displayName siempre debería tener un valor razonable para displayUserProfile
+    displayUserProfile(user); 
+    // Llamar al listener de invitaciones cuando el usuario está logueado
+    setupInvitationsListener(user.uid); 
     const currentHash = window.location.hash.substring(1);
     if (currentHash === '' || currentHash === 'cuenta') {
-      navigateTo('partidos');
+        navigateTo('partidos');
     } else {
-      navigateTo(currentHash);
+        navigateTo(currentHash);
     }
   } else {
     // Si no hay usuario, limpiar el contador de notificaciones
@@ -736,6 +806,8 @@ onAuthStateChanged(auth, async user => {
     if (['explorar', 'crear', 'partidos', 'notificaciones', 'torneo'].includes(currentHash)) {
         navigateTo('cuenta');
     }
+    // Limpiar el nombre temporal si el usuario se desloguea
+    localStorage.removeItem('temp_register_name');
   }
 });
 
@@ -1121,6 +1193,7 @@ async function crearPartido() {
     creadorUid: currentUser.uid,
     creadorEmail: currentUser.email,
     equipo1Id: crearPartidoConEquipoId,
+    cambiosPorEquipo: tipoFutbol === "Futbol 5" ? 2 : 2, // 2 cambios permitidos para Futbol 5 y Futbol 7
     equipo1Nombre: equipoCreadorData.nombre,
     equipo2Id: null,
     equipo2Nombre: null,
@@ -1142,7 +1215,7 @@ async function crearPartido() {
   const jugadoresEquipoCreadorNombres = equipoCreadorData.jugadoresNombres || [];
 
   const maxJugadoresConfirmados = cuposPorEquipo; // 5 o 7
-  const maxJugadoresConReserva = tipoFutbol === "Futbol 5" ? 7 : 9; // 5+2 o 7+2
+  const maxJugadoresConReserva = cuposPorEquipo + partido.cambiosPorEquipo; // 5+2=7 o 7+2=9
 
   let jugadoresConfirmadosEquipo1 = [];
   let jugadoresReservaEquipo1 = [];
@@ -1329,7 +1402,7 @@ window.unirseAPartido = async function(partidoId, partidoData, miEquipoId, miEqu
   const jugadoresEquipoQueSeUneNombres = equipoQueSeUneData.jugadoresNombres || [];
 
   const maxJugadoresConfirmados = partidoData.cupos; // 5 o 7
-  const maxJugadoresConReserva = partidoData.tipoFutbol === "Futbol 5" ? 7 : 9; // 5+2 o 7+2
+  const maxJugadoresConReserva = partidoData.cupos + partidoData.cambiosPorEquipo; // 5+2 o 7+2
 
 
   // --- VALIDACIÓN Y ASIGNACIÓN A RESERVA ---
