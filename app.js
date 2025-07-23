@@ -42,13 +42,15 @@ const db = getFirestore(app);
 const partidosCol = collection(db, "partidos");
 const usuariosCol = collection(db, "usuarios");
 const equiposCol = collection(db, "equipos");
-const invitacionesCol = collection(db, "invitaciones"); // Colección para invitaciones
+const invitacionesCol = collection(db, "invitaciones");
 
 // --- Variables para SPA ---
 const allSections = document.querySelectorAll('main section');
 const navLinks = document.querySelectorAll('.nav-link');
 const cuentaSection = document.getElementById('cuenta-section');
-const notificationCountSpan = document.getElementById('notification-count'); // Span para el contador
+const notificationCountSpan = document.getElementById('notification-count');
+
+console.log("APP: app.js cargado. Iniciando aplicación.");
 
 // --- Funciones de Utilidad ---
 function mostrarMensaje(mensaje, tipo = "exito", targetDivId = "global-mensaje") {
@@ -76,12 +78,15 @@ function showSection(sectionId) {
   if (sectionToShow) {
     sectionToShow.classList.remove('hidden');
     sectionToShow.classList.add('active-section');
+  } else {
+    console.error("APP: showSection: Elemento con ID", sectionId, "no encontrado.");
   }
 }
 
 // --- Lógica de Navegación (SPA Router) ---
 function navigateTo(path) {
   const user = auth.currentUser;
+  console.log("NAV: navigateTo llamado con path:", path, "Usuario logueado:", !!user);
 
   // Limpiar el estado del formulario "Crear Partido" al salir de él
   if (path === 'crear') {
@@ -100,9 +105,9 @@ function navigateTo(path) {
     if (mensajeCrear) mensajeCrear.textContent = '';
   }
 
-
   // Bloquear acceso a secciones protegidas si no hay usuario
   if (['explorar', 'crear', 'partidos', 'notificaciones', 'torneo'].includes(path) && !user) {
+    console.warn("NAV: Acceso denegado a", path, ". Redirigiendo a cuenta. (Usuario no logueado)");
     mostrarMensaje("Inicia sesión primero para acceder a esta sección.", "error", "global-mensaje");
     history.pushState(null, '', '#cuenta');
     showSection('cuenta-section');
@@ -121,9 +126,9 @@ function navigateTo(path) {
       cargarPartidos();
       cargarMisPartidos();
       break;
-    case 'notificaciones': // Nueva sección para notificaciones
+    case 'notificaciones':
       showSection('notificaciones-section');
-      // El listener ya está configurado en onAuthStateChanged para actualizar
+      // Listener ya configurado en onAuthStateChanged
       break;
     case 'cuenta':
       showSection('cuenta-section');
@@ -132,6 +137,7 @@ function navigateTo(path) {
       showSection('torneo-section');
       break;
     default:
+      console.log("NAV: Path desconocido o vacío, redirigiendo a 'cuenta'.");
       history.replaceState(null, '', '#cuenta');
       showSection('cuenta-section');
   }
@@ -145,21 +151,23 @@ navLinks.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
     const path = link.getAttribute('href').substring(1);
+    console.log("NAV: Clic en el enlace:", path);
     navigateTo(path);
   });
 });
 
 window.addEventListener('popstate', () => {
   const path = window.location.hash.substring(1) || 'cuenta';
+  console.log("NAV: Evento popstate, navegando a:", path);
   navigateTo(path);
 });
 
-// --- Lógica de Autenticación para Cuenta (Con gestión de equipo) ---
+// --- Lógica de Autenticación para Cuenta ---
 function renderAuthForm(isLogin = false) {
-  console.log("renderAuthForm: Se está ejecutando para isLogin =", isLogin); // Depuración
-  const formId = isLogin ? 'login-form' : 'register-form';
-  console.log("renderAuthForm: El ID del formulario será:", formId); // Depuración
-
+  if (!cuentaSection) {
+    console.error("AUTH: renderAuthForm: Elemento 'cuenta-section' no encontrado. No se puede renderizar el formulario.");
+    return;
+  }
   cuentaSection.innerHTML = `
     <h2>${isLogin ? 'Iniciar Sesión' : 'Registrarse'}</h2>
     <form id="${isLogin ? 'login-form' : 'register-form'}">
@@ -171,7 +179,7 @@ function renderAuthForm(isLogin = false) {
       <button type="submit">${isLogin ? 'Iniciar Sesión' : 'Registrarse'}</button>
     </form>
   `;
-  console.log("renderAuthForm: innerHTML de cuentaSection modificado."); // Depuración
+  console.log("AUTH: Formulario de autenticación renderizado. isLogin:", isLogin);
   setupAuthForms();
 }
 
@@ -189,6 +197,8 @@ function setupAuthForms() {
       const nombre = registerForm.querySelector('#auth-nombre').value.trim();
       const nombreLower = nombre.toLowerCase();
 
+      console.log("AUTH: Intentando registrar usuario con nombre:", nombre);
+
       if (!nombre) {
         mostrarMensaje("Por favor, introduce tu nombre de jugador.", "error", "global-mensaje");
         return;
@@ -196,47 +206,40 @@ function setupAuthForms() {
       
       // VALIDACIÓN: Comprobar si el nombre ya existe para otro usuario
       const qNombreExistente = query(usuariosCol, where("nombre", "==", nombreLower));
-      const snapshotNombreExistente = await getDocs(qNombreExistente);
-      if (!snapshotNombreExistente.empty) {
-          mostrarMensaje("Este nombre de jugador ya está en uso. Por favor, elige otro.", "error", "global-mensaje");
-          return;
+      try {
+        const snapshotNombreExistente = await getDocs(qNombreExistente);
+        if (!snapshotNombreExistente.empty) {
+            mostrarMensaje("Este nombre de jugador ya está en uso. Por favor, elige otro.", "error", "global-mensaje");
+            return;
+        }
+      } catch (error) {
+        console.error("AUTH: Error al verificar unicidad de nombre:", error);
+        mostrarMensaje("Error al verificar nombre de jugador. Intenta de nuevo.", "error", "global-mensaje");
+        return;
       }
 
       try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
+        console.log("AUTH: Usuario autenticado con éxito al registrar, UID:", user.uid);
 
-        // *** CAMBIOS APLICADOS AQUÍ: ***
-        // SE ELIMINA LA CREACIÓN/ACTUALIZACIÓN DEL PERFIL EN FIRESTORE Y DISPLAYNAME EN AUTH AQUÍ.
-        // ESTO AHORA LO MANEJARÁ EL LISTENER onAuthStateChanged para evitar duplicidad y race conditions.
-        // await updateProfile(user, { displayName: nombre });
-        // await setDoc(doc(db, "usuarios", user.uid), {
-        //   email: user.email,
-        //   nombre: nombreLower,
-        //   nombreOriginal: nombre,
-        //   uid: user.uid,
-        //   esCapitan: false,
-        //   equipoCapitaneadoId: null
-        // });
+        await updateProfile(user, { displayName: nombre });
+        console.log("AUTH: Perfil de Auth actualizado con displayName.");
 
-        // Guarda el nombre de jugador en el localStorage para que onAuthStateChanged lo use
-        localStorage.setItem('temp_register_name', nombre);
-
+        await setDoc(doc(db, "usuarios", user.uid), {
+          email: user.email,
+          nombre: nombreLower,
+          nombreOriginal: nombre,
+          uid: user.uid,
+          esCapitan: false,
+          equipoCapitaneadoId: null
+        });
+        console.log("AUTH: Documento de usuario creado en Firestore para UID:", user.uid);
 
         mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
       } catch (error) {
-        // Mejorar mensajes de error para el usuario
-        let errorMessage = "Error al crear cuenta: ";
-        if (error.code === 'auth/email-already-in-use') {
-            errorMessage += "Este correo electrónico ya está registrado.";
-        } else if (error.code === 'auth/invalid-email') {
-            errorMessage += "El formato del correo electrónico es inválido.";
-        } else if (error.code === 'auth/weak-password') {
-            errorMessage += "La contraseña es demasiado débil (debe tener al menos 6 caracteres).";
-        } else {
-            errorMessage += error.message;
-        }
-        mostrarMensaje(errorMessage, "error", "global-mensaje");
+        console.error("AUTH: Error al crear usuario o documento de Firestore:", error);
+        mostrarMensaje("Error al crear cuenta: " + error.message, "error", "global-mensaje");
       }
     });
   }
@@ -246,21 +249,15 @@ function setupAuthForms() {
       e.preventDefault();
       const email = loginForm.querySelector('#auth-email').value;
       const password = loginForm.querySelector('#auth-password').value;
+      console.log("AUTH: Intentando iniciar sesión con:", email);
+
       try {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        console.log("AUTH: ¡Inicio de sesión exitoso en Auth! User UID:", userCredential.user.uid);
         mostrarMensaje("Sesión iniciada correctamente. ¡Bienvenido!", "exito", "global-mensaje");
       } catch (error) {
-        let errorMessage = "Error al iniciar sesión: ";
-        if (error.code === 'auth/invalid-credential') { // Nuevo código para login fallido
-            errorMessage += "Credenciales incorrectas. Verifica tu email y contraseña.";
-        } else if (error.code === 'auth/user-not-found') {
-            errorMessage += "Usuario no encontrado.";
-        } else if (error.code === 'auth/wrong-password') {
-            errorMessage += "Contraseña incorrecta.";
-        } else {
-            errorMessage += error.message;
-        }
-        mostrarMensaje(errorMessage, "error", "global-mensaje");
+        console.error("AUTH: Error directo de signInWithEmailAndPassword:", error);
+        mostrarMensaje("Error al iniciar sesión: " + error.message, "error", "global-mensaje");
       }
     });
   }
@@ -268,6 +265,7 @@ function setupAuthForms() {
   if (toggleLoginLink) {
     toggleLoginLink.addEventListener("click", (e) => {
       e.preventDefault();
+      console.log("AUTH: Clic en 'Iniciar Sesión'.");
       renderAuthForm(true);
     });
   }
@@ -275,29 +273,47 @@ function setupAuthForms() {
   if (toggleRegisterLink) {
     toggleRegisterLink.addEventListener("click", (e) => {
       e.preventDefault();
+      console.log("AUTH: Clic en 'Registrarse'.");
       renderAuthForm(false);
     });
   }
 }
 
 async function displayUserProfile(user) {
+  console.log("PROFILE: displayUserProfile llamado para UID:", user.uid);
   let userName = user.displayName;
   let userDocData;
 
-  if (user.uid) {
-    const userDocRef = doc(db, "usuarios", user.uid);
+  const userDocRef = doc(db, "usuarios", user.uid);
+  try {
     const userDocSnap = await getDoc(userDocRef);
     if (userDocSnap.exists()) {
       userDocData = userDocSnap.data();
-      // Preferir nombreOriginal de Firestore si existe, si no, displayName de Auth, si no, email
       userName = userDocData.nombreOriginal || userDocData.nombre || user.email;
+      console.log("PROFILE: Documento de usuario de Firestore encontrado:", userDocData);
+    } else {
+      console.warn("PROFILE: Documento de usuario NO existe en Firestore para UID:", user.uid, ". Creando ahora.");
+      await setDoc(userDocRef, {
+        email: user.email,
+        nombre: (user.displayName || user.email.split('@')[0]).toLowerCase(),
+        nombreOriginal: user.displayName || user.email.split('@')[0],
+        uid: user.uid,
+        esCapitan: false,
+        equipoCapitaneadoId: null
+      });
+      userDocData = (await getDoc(userDocRef)).data(); // Recargar data después de crear
+      console.log("PROFILE: Documento de usuario creado en Firestore.");
     }
+  } catch (error) {
+    console.error("PROFILE: ERROR al leer/crear documento de usuario en Firestore:", error);
+    mostrarMensaje("Error al cargar perfil de usuario. Contacta a soporte.", "error", "global-mensaje");
+    return; // Detener si hay un error crítico al cargar el perfil
   }
-  if (!userName) { // Fallback si no hay displayName ni nombre en Firestore
+  
+  if (!userName) {
     userName = user.email;
   }
 
-  // Estructura base del perfil
   let profileHtml = `
     <h2>Mi perfil</h2>
     <p><strong>Email:</strong> ${user.email}</p>
@@ -312,17 +328,14 @@ async function displayUserProfile(user) {
       <div id="equipo-details"></div>
     </div>
   `;
-  cuentaSection.innerHTML = profileHtml; // Renderiza la estructura base primero
+  cuentaSection.innerHTML = profileHtml;
 
-  // Obtener referencias a los botones y elementos recién creados
   const btnEditName = document.getElementById('btn-edit-name');
   const btnSaveName = document.getElementById('btn-save-name');
   const editUserNameInput = document.getElementById('edit-user-name');
   const displayUserNameSpan = document.getElementById('display-user-name');
   const equipoDetailsDiv = document.getElementById('equipo-details');
 
-
-  // --- Event Listeners para el perfil de usuario ---
   btnEditName.addEventListener('click', () => {
     displayUserNameSpan.style.display = 'none';
     btnEditName.style.display = 'none';
@@ -333,17 +346,24 @@ async function displayUserProfile(user) {
   });
 
   btnSaveName.addEventListener('click', async () => {
+    console.log("PROFILE: Clic en Guardar Nombre.");
     const newName = editUserNameInput.value.trim();
     const newNameLower = newName.toLowerCase();
     if (newName && user) {
       const qNombreExistente = query(usuariosCol, where("nombre", "==", newNameLower));
-      const snapshotNombreExistente = await getDocs(qNombreExistente);
-      if (!snapshotNombreExistente.empty) {
-          const foundDoc = snapshotNombreExistente.docs[0];
-          if (foundDoc.id !== user.uid) {
-              mostrarMensaje("Este nombre de jugador ya está en uso por otra persona. Por favor, elige otro.", "error", "global-mensaje");
-              return;
-          }
+      try {
+        const snapshotNombreExistente = await getDocs(qNombreExistente);
+        if (!snapshotNombreExistente.empty) {
+            const foundDoc = snapshotNombreExistente.docs[0];
+            if (foundDoc.id !== user.uid) {
+                mostrarMensaje("Este nombre de jugador ya está en uso por otra persona. Por favor, elige otro.", "error", "global-mensaje");
+                return;
+            }
+        }
+      } catch (error) {
+        console.error("PROFILE: Error al verificar unicidad de nombre al guardar:", error);
+        mostrarMensaje("Error al verificar nombre. Intenta de nuevo.", "error", "global-mensaje");
+        return;
       }
 
       try {
@@ -367,7 +387,7 @@ async function displayUserProfile(user) {
                 });
             }
         }
-
+        console.log("PROFILE: Nombre actualizado exitosamente.");
         mostrarMensaje("Nombre actualizado correctamente.", "exito", "global-mensaje");
         displayUserProfile(user); 
         if (window.location.hash.substring(1) === 'partidos') {
@@ -375,6 +395,7 @@ async function displayUserProfile(user) {
             cargarMisPartidos();
         }
       } catch (error) {
+        console.error("PROFILE: Error al actualizar perfil o nombre en Firestore:", error);
         mostrarMensaje("Error al actualizar nombre: " + error.message, "error", "global-mensaje");
       }
     } else {
@@ -384,394 +405,170 @@ async function displayUserProfile(user) {
 
 
   document.getElementById("cerrarSesion").addEventListener("click", () => {
+    console.log("AUTH: Clic en Cerrar sesión.");
     signOut(auth).then(() => {
       mostrarMensaje("Sesión cerrada.", "exito", "global-mensaje");
-    }).catch(e => mostrarMensaje("Error al cerrar sesión: " + e.message, "error", "global-mensaje"));
+    }).catch(e => {
+        console.error("AUTH: Error al cerrar sesión:", e);
+        mostrarMensaje("Error al cerrar sesión: " + e.message, "error", "global-mensaje")
+    });
   });
 
-  // --- Lógica para mostrar la información del equipo (MODIFICADA para mostrar siempre Crear Equipo) ---
+  // Lógica para mostrar la información del equipo
   let equipoHtmlContent = '';
-  let isCaptainOfATeam = false; // Flag para saber si es capitán
+  let isCaptainOfATeam = false;
 
-  // 1. Obtener todos los equipos a los que pertenece el usuario (como jugador o capitán)
   const qAllUserTeams = query(equiposCol, where("jugadoresUids", "array-contains", user.uid));
-  const allUserTeamsSnap = await getDocs(qAllUserTeams);
-  
-  let teamsWherePlayer = [];
-  allUserTeamsSnap.forEach(doc => {
-      teamsWherePlayer.push({ id: doc.id, data: doc.data() });
-  });
+  try {
+    const allUserTeamsSnap = await getDocs(qAllUserTeams);
+    let teamsWherePlayer = [];
+    allUserTeamsSnap.forEach(doc => {
+        teamsWherePlayer.push({ id: doc.id, data: doc.data() });
+    });
+    console.log("PROFILE: Equipos donde el usuario es jugador:", teamsWherePlayer.length);
 
+    if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
+      const currentTeamId = userDocData.equipoCapitaneadoId;
+      const equipoRef = doc(db, "equipos", currentTeamId);
+      const equipoSnap = await getDoc(equipoRef);
 
-  // 2. Mostrar Equipo Capitaneado (si aplica)
-  if (userDocData && userDocData.esCapitan && userDocData.equipoCapitaneadoId) {
-    const currentTeamId = userDocData.equipoCapitaneadoId;
-    const equipoRef = doc(db, "equipos", currentTeamId);
-    const equipoSnap = await getDoc(equipoRef);
+      if (equipoSnap.exists()) {
+        const equipoData = equipoSnap.data();
+        isCaptainOfATeam = true;
+        console.log("PROFILE: Usuario es capitán del equipo:", equipoData.nombre);
 
-    if (equipoSnap.exists()) {
-      const equipoData = equipoSnap.data();
-      isCaptainOfATeam = true;
-
-      equipoHtmlContent += `
-        <h4>Capitán de Equipo:</h4>
-        <p>Eres Capitán del equipo <strong>${equipoData.nombre}</strong>.</p>
-        <p><strong>Jugadores:</strong></p>
-        <ul id="team-players-list">
-          ${equipoData.jugadoresNombres.map(jugador => `<li>${jugador}</li>`).join('')}
-        </ul>
-        <input type="text" id="search-player-name" placeholder="Buscar jugador por nombre">
-        <button id="btn-search-player">Buscar</button>
-        <div id="player-search-results" style="margin-top: 10px;"></div>
-        <button id="btn-delete-team" style="background-color: #dc3545;">Eliminar Equipo</button>
-        <hr style="margin-top: 20px; margin-bottom: 20px; border-top: 1px dashed #ccc;">
-      `;
-    } else {
-      await updateDoc(doc(db, "usuarios", user.uid), { esCapitan: false, equipoCapitaneadoId: null });
-      equipoHtmlContent += `<p>Error: Tu equipo de capitán no se encontró. Hemos corregido tu estado de capitán.</p>`;
-      isCaptainOfATeam = false; // Resetear flag
-    }
-  }
-
-  // 3. Mostrar otros equipos donde es jugador (si aplica y no es el capitán del equipo ya mostrado)
-  const otherTeamsWherePlayer = teamsWherePlayer.filter(team => 
-      !(isCaptainOfATeam && team.id === userDocData.equipoCapitaneadoId) // Excluir el equipo capitaneado si ya se mostró
-  );
-
-  if (otherTeamsWherePlayer.length > 0) {
-      equipoHtmlContent += `<h4>Jugador en otros Equipos:</h4><ul>`;
-      otherTeamsWherePlayer.forEach(team => {
-          equipoHtmlContent += `<li>${team.data.nombre}</li>`;
-      });
-      equipoHtmlContent += `</ul><hr style="margin-top: 20px; margin-bottom: 20px; border-top: 1px dashed #ccc;">`;
-  }
-
-  // 4. Opción de crear equipo (siempre visible ahora)
-  equipoHtmlContent += `
-      <h4>Crear Nuevo Equipo:</h4>
-      <p>¡Crea tu propio equipo y conviértete en capitán!</p>
-      <input type="text" id="new-team-name" placeholder="Nombre de tu nuevo equipo">
-      <button id="btn-create-team">Crear Equipo</button>
-  `;
-
-
-  equipoDetailsDiv.innerHTML = equipoHtmlContent; // Asigna todo el HTML construido
-
-  // --- Adjuntar todos los Event Listeners DESPUÉS de que el HTML esté en el DOM ---
-
-  // Para la gestión de capitán/jugadores (si el usuario es capitán y la sección se renderizó)
-  if (isCaptainOfATeam && userDocData && userDocData.equipoCapitaneadoId) {
-      const currentTeamId = userDocData.equipoCapitaneadoId; 
-      const btnSearchPlayer = document.getElementById('btn-search-player');
-      const searchPlayerNameInput = document.getElementById('search-player-name');
-      const btnDeleteTeam = document.getElementById('btn-delete-team');
-
-      if (btnSearchPlayer) { 
-          btnSearchPlayer.addEventListener('click', () => searchAndAddPlayer(currentTeamId));
+        equipoHtmlContent += `
+          <h4>Capitán de Equipo:</h4>
+          <p>Eres Capitán del equipo <strong>${equipoData.nombre}</strong>.</p>
+          <p><strong>Jugadores:</strong></p>
+          <ul id="team-players-list">
+            ${equipoData.jugadoresNombres.map(jugador => `<li>${jugador}</li>`).join('')}
+          </ul>
+          <input type="text" id="search-player-name" placeholder="Buscar jugador por nombre">
+          <button id="btn-search-player">Buscar</button>
+          <div id="player-search-results" style="margin-top: 10px;"></div>
+          <button id="btn-delete-team" style="background-color: #dc3545;">Eliminar Equipo</button>
+          <hr style="margin-top: 20px; margin-bottom: 20px; border-top: 1px dashed #ccc;">
+        `;
+      } else {
+        console.warn("PROFILE: Equipo capitaneado no encontrado en Firestore. Corrigiendo estado.");
+        await updateDoc(doc(db, "usuarios", user.uid), { esCapitan: false, equipoCapitaneadoId: null });
+        equipoHtmlContent += `<p>Error: Tu equipo de capitán no se encontró. Hemos corregido tu estado de capitán.</p>`;
+        isCaptainOfATeam = false;
       }
-      if (searchPlayerNameInput) {
-          searchPlayerNameInput.addEventListener('keypress', (e) => {
-              if (e.key === 'Enter') {
-                  e.preventDefault();
-                  searchAndAddPlayer(currentTeamId);
-              }
-          });
-      }
-      if (btnDeleteTeam) {
-          btnDeleteTeam.addEventListener('click', () => deleteTeam(currentTeamId, user.uid));
-      }
-  }
-
-  // Para la creación de equipo (siempre visible ahora)
-  const btnCreateTeam = document.getElementById('btn-create-team');
-  if (btnCreateTeam) { // Comprobar si el elemento existe antes de añadir listener
-      btnCreateTeam.addEventListener('click', createTeam);
-  }
-}
-// --- Funciones de Gestión de Equipo ---
-
-async function createTeam() {
-    const user = auth.currentUser;
-    if (!user) {
-        mostrarMensaje("Debes iniciar sesión para crear un equipo.", "error", "global-mensaje");
-        return;
-    }
-    const teamName = document.getElementById('new-team-name').value.trim();
-    if (!teamName) {
-        mostrarMensaje("Por favor, introduce un nombre para tu equipo.", "error", "global-mensaje");
-        return;
     }
 
-    // VALIDACIÓN: Comprobar si el nombre del equipo ya existe
-    const qEquipoExistente = query(equiposCol, where("nombre", "==", teamName));
-    const snapshotEquipoExistente = await getDocs(qEquipoExistente);
-    if (!snapshotEquipoExistente.empty) {
-        mostrarMensaje("Ya existe un equipo con este nombre. Por favor, elige otro.", "error", "global-mensaje");
-        return;
-    }
+    const otherTeamsWherePlayer = teamsWherePlayer.filter(team => 
+        !(isCaptainOfATeam && team.id === userDocData.equipoCapitaneadoId)
+    );
 
-
-    const userDocRef = doc(db, "usuarios", user.uid);
-    const userDocSnap = await getDoc(userDocRef);
-    if (userDocSnap.exists() && userDocSnap.data().esCapitan) {
-        mostrarMensaje("Ya eres capitán de un equipo. No puedes crear otro.", "error", "global-mensaje");
-        return;
-    }
-    if (!user.displayName) {
-        mostrarMensaje("Por favor, establece tu nombre de jugador en tu perfil antes de crear un equipo.", "error", "global-mensaje");
-        return;
-    }
-
-    try {
-        const newTeamRef = await addDoc(equiposCol, {
-            nombre: teamName,
-            capitanUid: user.uid,
-            capitanEmail: user.email,
-            capitanNombre: user.displayName,
-            jugadoresUids: [user.uid],
-            jugadoresNombres: [user.displayName]
+    if (otherTeamsWherePlayer.length > 0) {
+        console.log("PROFILE: Usuario es jugador en otros equipos:", otherTeamsWherePlayer.length);
+        equipoHtmlContent += `<h4>Jugador en otros Equipos:</h4><ul>`;
+        otherTeamsWherePlayer.forEach(team => {
+            equipoHtmlContent += `<li>${team.data.nombre}</li>`;
         });
-
-        await updateDoc(userDocRef, {
-            esCapitan: true,
-            equipoCapitaneadoId: newTeamRef.id
-        });
-
-        mostrarMensaje(`Equipo "${teamName}" creado exitosamente!`, "exito", "global-mensaje");
-        displayUserProfile(user);
-    } catch (error) {
-        mostrarMensaje("Error al crear equipo: " + error.message, "error", "global-mensaje");
-    }
-}
-
-async function searchAndAddPlayer(teamId) {
-    const user = auth.currentUser;
-    if (!user) return; 
-
-    // --- Validación de teamId al inicio ---
-    if (!teamId) {
-        console.error("searchAndAddPlayer: teamId es undefined o nulo. No se puede realizar la búsqueda.");
-        mostrarMensaje("Error interno: ID de equipo no disponible. Recarga la página o contacta soporte.", "error", "global-mensaje");
-        return;
+        equipoHtmlContent += `</ul><hr style="margin-top: 20px; margin-bottom: 20px; border-top: 1px dashed #ccc;">`;
     }
 
-    const searchPlayerNameInput = document.getElementById('search-player-name');
-    const playerName = searchPlayerNameInput.value.trim();
-    const playerNameLower = playerName.toLowerCase(); 
-    const playerSearchResultsDiv = document.getElementById('player-search-results');
-    playerSearchResultsDiv.innerHTML = ''; 
+    // Opción de crear equipo (siempre visible)
+    equipoHtmlContent += `
+        <h4>Crear Nuevo Equipo:</h4>
+        <p>¡Crea tu propio equipo y conviértete en capitán!</p>
+        <input type="text" id="new-team-name" placeholder="Nombre de tu nuevo equipo">
+        <button id="btn-create-team">Crear Equipo</button>
+    `;
 
-    if (!playerName) {
-        mostrarMensaje("Por favor, introduce el nombre del jugador a buscar.", "error", "global-mensaje");
-        return;
-    }
+    equipoDetailsDiv.innerHTML = equipoHtmlContent;
 
-    console.log(`Buscando jugador con nombre (original): '${playerName}'`);
-    console.log(`Buscando jugador con nombre (minúsculas): '${playerNameLower}'`);
-    console.log(`Buscando para el teamId: '${teamId}'`);
+    // Adjuntar todos los Event Listeners DESPUÉS de que el HTML esté en el DOM
+    if (isCaptainOfATeam && userDocData && userDocData.equipoCapitaneadoId) {
+        const currentTeamId = userDocData.equipoCapitaneadoId; 
+        const btnSearchPlayer = document.getElementById('btn-search-player');
+        const searchPlayerNameInput = document.getElementById('search-player-name');
+        const btnDeleteTeam = document.getElementById('btn-delete-team');
 
-    try {
-        const q = query(usuariosCol, where("nombre", "==", playerNameLower));
-        const playerSnap = await getDocs(q);
-
-        console.log("Resultados de la consulta de jugadores (raw):", playerSnap.docs.map(doc => doc.data().nombreOriginal || doc.data().nombre));
-
-        if (playerSnap.empty) {
-            playerSearchResultsDiv.innerHTML = '<p>No se encontraron jugadores con ese nombre.</p>';
-            console.log("playerSnap está vacío: No se encontraron coincidencias.");
-            return;
+        if (btnSearchPlayer) { 
+            btnSearchPlayer.addEventListener('click', () => searchAndAddPlayer(currentTeamId));
         }
-
-        const teamRef = doc(db, "equipos", teamId);
-        const teamSnap = await getDoc(teamRef);
-        
-        if (!teamSnap.exists()) {
-            mostrarMensaje("Error: El equipo no fue encontrado. Asegúrate de que tu equipo exista.", "error", "global-mensaje");
-            console.error("searchAndAddPlayer: Equipo no encontrado para ID:", teamId);
-            return;
-        }
-        const teamData = teamSnap.data();
-        console.log("Datos del equipo actual:", teamData);
-
-        let foundPlayersCount = 0;
-        playerSnap.forEach(playerDoc => {
-            const playerData = playerDoc.data();
-            const playerUid = playerDoc.id;
-            const displayPlayerName = playerData.nombreOriginal || playerData.nombre; 
-
-            console.log(`Procesando jugador encontrado: ${displayPlayerName} (UID: ${playerUid})`);
-
-            if (playerUid === user.uid) {
-                playerSearchResultsDiv.innerHTML += `<p>${displayPlayerName} (${playerData.email}) - (Eres tú)</p>`;
-                return;
-            }
-            if (teamData.jugadoresUids && teamData.jugadoresUids.includes(playerUid)) {
-                playerSearchResultsDiv.innerHTML += `<p>${displayPlayerName} (${playerData.email}) - (Ya está en tu equipo)</p>`;
-                return;
-            }
-
-            foundPlayersCount++;
-            const resultDiv = document.createElement('div');
-            resultDiv.style.marginBottom = '5px';
-            resultDiv.innerHTML = `
-                <span>${displayPlayerName} (${playerData.email})</span>
-                <button data-player-uid="${playerUid}" data-player-name="${displayPlayerName}" data-player-email="${playerData.email}"
-                        style="margin-left: 10px; padding: 5px 10px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                    Invitar
-                </button>
-            `;
-            playerSearchResultsDiv.appendChild(resultDiv);
-        });
-
-        if (foundPlayersCount === 0 && playerSnap.size > 0) {
-            playerSearchResultsDiv.innerHTML = '<p>Se encontraron coincidencias, pero ya están en tu equipo o eres tú.</p>';
-        } else if (foundPlayersCount === 0 && playerSnap.size === 0) {
-            // Este caso ya lo cubre el playerSnap.empty
-        }
-
-        playerSearchResultsDiv.querySelectorAll('button').forEach(button => {
-            button.addEventListener('click', async (e) => {
-                const targetButton = e.target;
-                const playerUidToAdd = targetButton.dataset.playerUid;
-                const playerNameToAdd = targetButton.dataset.playerName;
-                const playerEmailToAdd = targetButton.dataset.playerEmail; // Obtener el email
-
-                try {
-                    // Enviar invitación en lugar de añadir directamente al equipo
-                    await addDoc(invitacionesCol, {
-                        equipoId: teamId,
-                        equipoNombre: teamData.nombre,
-                        capitanUid: user.uid,
-                        capitanNombre: user.displayName || user.email,
-                        invitadoUid: playerUidToAdd,
-                        invitadoEmail: playerEmailToAdd,
-                        estado: "pendiente",
-                        timestamp: serverTimestamp() // Usar serverTimestamp
-                    });
-
-                    mostrarMensaje(`Invitación enviada a ${playerNameToAdd}.`, "exito", "global-mensaje");
-                    searchPlayerNameInput.value = '';
-                    playerSearchResultsDiv.innerHTML = '';
-                    // No recargar displayUserProfile aquí, ya que no se añadió al equipo aún
-                    // La UI de invitaciones se actualizará vía listener
-                } catch (error) {
-                    mostrarMensaje(`Error al enviar invitación a ${playerNameToAdd}: ` + error.message, "error", "global-mensaje");
-                    console.error("Detalle del error al enviar invitación:", error);
+        if (searchPlayerNameInput) {
+            searchPlayerNameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    searchAndAddPlayer(currentTeamId);
                 }
             });
-        });
-
-    } catch (error) {
-        mostrarMensaje("Error al buscar jugador: " + error.message, "error", "global-mensaje");
-        console.error("Detalle del error al buscar jugador:", error);
-    }
-}
-
-
-async function deleteTeam(teamId, captainUid) {
-    const user = auth.currentUser;
-    if (!user || user.uid !== captainUid) {
-        mostrarMensaje("No tienes permiso para eliminar este equipo.", "error", "global-mensaje");
-        return;
-    }
-
-    if (!confirm("¿Estás seguro de que quieres eliminar tu equipo? Esta acción es irreversible.")) {
-        return;
-    }
-    try {
-        const teamRef = doc(db, "equipos", teamId);
-        const teamSnap = await getDoc(teamRef);
-        if (!teamSnap.exists() || teamSnap.data().capitanUid !== user.uid) {
-            mostrarMensaje("No tienes permiso para eliminar este equipo.", "error", "global-mensaje");
-            return;
         }
-
-        await updateDoc(doc(db, "usuarios", user.uid), {
-            esCapitan: false,
-            equipoCapitaneadoId: null
-        });
-
-        await deleteDoc(teamRef);
-
-        mostrarMensaje("Equipo eliminado exitosamente.", "exito", "global-mensaje");
-        displayUserProfile(user);
-    } catch (error) {
-        mostrarMensaje("Error al eliminar equipo: " + error.message, "error", "global-mensaje");
+        if (btnDeleteTeam) {
+            btnDeleteTeam.addEventListener('click', () => deleteTeam(currentTeamId, user.uid));
+        }
     }
-}
 
+    const btnCreateTeam = document.getElementById('btn-create-team');
+    if (btnCreateTeam) {
+        btnCreateTeam.addEventListener('click', createTeam);
+    }
+
+  } catch (error) { // Catch para el getDocs(qAllUserTeams) y lógica general del equipo
+    console.error("PROFILE: ERROR general al cargar información del equipo:", error);
+    mostrarMensaje("Error al cargar la información de tus equipos. Intenta de nuevo.", "error", "global-mensaje");
+  }
+}
 
 onAuthStateChanged(auth, async user => {
   if (user) {
-    console.log("onAuthStateChanged: Usuario autenticado. UID:", user.uid); // Depuración
+    console.log("AUTH: onAuthStateChanged: Usuario detectado, UID:", user.uid);
     const userDocRef = doc(db, "usuarios", user.uid);
-    // Ya no necesitas userDocSnap aquí si la función cloud se encargará de crear
-    // const userDocSnap = await getDoc(userDocRef); // <-- Puedes quitar esta línea si quieres ser más estricto
-
-    let userNameFromInput = localStorage.getItem('temp_register_name');
-    let profileDisplayName = user.displayName;
-
-    // 1. Siempre intentar asegurar que el displayName esté configurado
-    // Este es el displayName de Firebase Authentication, no el nombre del documento de Firestore
-    if (!profileDisplayName && userNameFromInput) {
-        await updateProfile(user, { displayName: userNameFromInput });
-        profileDisplayName = userNameFromInput;
-        console.log("onAuthStateChanged: DisplayName de Auth actualizado con nombre del registro temporal.");
-    } else if (!profileDisplayName) {
-         await updateProfile(user, { displayName: user.email.split('@')[0] });
-         profileDisplayName = user.email.split('@')[0];
-         console.log("onAuthStateChanged: DisplayName de Auth actualizado a partir del email.");
-    }
-    // No se necesita un retraso aquí ya que no estamos haciendo una escritura en Firestore *todavía*
-
-    // *** ELIMINAR EL setDoc PARA LA CREACIÓN INICIAL DEL PERFIL DE USUARIO ***
-    // La Función de Cloud se encargará de esto ahora.
-    // Por lo tanto, todo el bloque 'if (!userDocSnap.exists())' debe ser eliminado o comentado.
-    // Solo necesitas *leer* los datos del usuario de Firestore después de que la Función de Cloud los haya creado.
-
-    // Reemplaza todo el bloque `if (!userDocSnap.exists()) { ... } else { ... }`
-    // con la lógica para mostrar el perfil *después* de asumir que los datos existen.
-
-    // Código anterior (a REMOVER/COMENTAR):
-    /*
-    if (!userDocSnap.exists()) {
-      try {
-        // ... updateProfile (ya manejado arriba) ...
-        // await new Promise(resolve => setTimeout(resolve, 500)); // Quita también este retraso
-        // await setDoc(userDocRef, { ... }); // REMOVER ESTA LLAMADA setDoc COMPLETA
-        // ... localStorage.removeItem('temp_register_name');
-      } catch (error) { ... }
-    } else {
-        // ... (lógica existente para cuando el documento existe, incluyendo la actualización del nombre si es necesario)
-        // localStorage.removeItem('temp_register_name');
-    }
-    */
-
-    // Nueva lógica simplificada para onAuthStateChanged:
-    // Después de que el usuario esté autenticado, se asegura que el displayName esté configurado (manejado arriba),
-    // luego se asume que la Función de Cloud creará el documento de usuario si aún no existe,
-    // y se procede a mostrar el perfil.
-
-    if (userNameFromInput) { // Si fue un nuevo registro, limpia el nombre temporal de todas formas
-        localStorage.removeItem('temp_register_name');
-    }
-
-    // Opcional: Si necesitas asegurarte de que el documento existe antes de llamar a displayUserProfile,
-    // puedes poner un pequeño bucle o reintento aquí para esperar a la función de cloud.
-    // Pero displayUserProfile ya tiene un getDoc, que debería funcionar una vez que la función de cloud escriba.
-    // Por ahora, lo dejaremos como está para mantener la simplicidad inicial.
-
-    displayUserProfile(user); // Esta función *leerá* de Firestore, asumiendo que el documento ya está allí
-    setupInvitationsListener(user.uid);
-    const currentHash = window.location.hash.substring(1);
-    if (currentHash === '' || currentHash === 'cuenta') {
-        navigateTo('partidos');
-    } else {
-        navigateTo(currentHash);
+    
+    console.log("AUTH: Intentando obtener documento de usuario de Firestore para UID:", user.uid);
+    try {
+        const userDocSnap = await getDoc(userDocRef);
+        
+        if (!userDocSnap.exists()) {
+            console.warn("AUTH: Documento de usuario NO existe en Firestore para UID:", user.uid, ". Creándolo ahora.");
+            // Si el documento NO existe, crearlo con valores por defecto
+            await setDoc(userDocRef, {
+                email: user.email,
+                nombre: (user.displayName || user.email.split('@')[0]).toLowerCase(),
+                nombreOriginal: user.displayName || user.email.split('@')[0],
+                uid: user.uid,
+                esCapitan: false,
+                equipoCapitaneadoId: null
+            });
+            console.log("AUTH: Documento de usuario creado en Firestore.");
+        } else {
+            console.log("AUTH: Documento de usuario existe en Firestore.");
+        }
+        
+        displayUserProfile(user); 
+        setupInvitationsListener(user.uid); 
+        const currentHash = window.location.hash.substring(1);
+        if (currentHash === '' || currentHash === 'cuenta') {
+            navigateTo('partidos');
+        } else {
+            navigateTo(currentHash);
+        }
+    } catch (firestoreError) {
+        console.error("AUTH: ERROR al leer/crear documento de usuario en Firestore:", firestoreError);
+        mostrarMensaje("Error al cargar perfil de usuario. Contacta a soporte.", "error", "global-mensaje");
     }
   } else {
-    // ... (lógica existente para cuando no hay usuario)
-    localStorage.removeItem('temp_register_name');
+    console.log("AUTH: onAuthStateChanged: Usuario deslogueado o no detectado. Llamando a renderAuthForm(false).");
+    renderAuthForm(false);
+    if (notificationCountSpan) {
+        notificationCountSpan.textContent = '0';
+        notificationCountSpan.style.display = 'none';
+    }
+    if (unsubscribeInvitationsListener) {
+        unsubscribeInvitationsListener(); 
+        unsubscribeInvitationsListener = null;
+    }
+
+    const currentHash = window.location.hash.substring(1);
+    // Solo redirigir a #cuenta si la página actual requiere autenticación
+    if (['explorar', 'crear', 'partidos', 'notificaciones', 'torneo'].includes(currentHash)) {
+        navigateTo('cuenta');
+    }
   }
 });
 
