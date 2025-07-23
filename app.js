@@ -203,68 +203,64 @@ function setupAuthForms() {
         mostrarMensaje("Por favor, introduce tu nombre de jugador.", "error", "global-mensaje");
         return;
       }
-      
-      // Intentar crear el usuario de Auth primero
-      let userCredential;
+
+      // --- CAMBIO CLAVE: Verificar unicidad del nombre ANTES de crear el usuario de Auth ---
+      const qNombreExistente = query(usuariosCol, where("nombre", "==", nombreLower));
       try {
-          userCredential = await createUserWithEmailAndPassword(auth, email, password);
-          console.log("AUTH: Usuario autenticado con éxito al registrar, UID:", userCredential.user.uid);
-          mostrarMensaje("Cuenta creada en autenticación. Verificando unicidad del nombre...", "info", "global-mensaje");
+        console.log("AUTH: Verificando unicidad del nombre en Firestore (pre-Auth).");
+        const snapshotNombreExistente = await getDocs(qNombreExistente); // Línea ~216
+        
+        if (!snapshotNombreExistente.empty) {
+            mostrarMensaje("Este nombre de jugador ya está en uso. Por favor, elige otro.", "error", "global-mensaje");
+            console.warn("AUTH: Unicidad de nombre fallida: Nombre ya existe.");
+            return; // Detener el registro si el nombre ya está en uso
+        }
+        console.log("AUTH: Unicidad de nombre verificada: Nombre disponible.");
+
       } catch (error) {
-          console.error("AUTH: Error al crear usuario en Authentication:", error);
-          mostrarMensaje("Error de registro: " + error.message, "error", "global-mensaje");
-          return;
+        // Este catch atrapa errores al leer la base de datos ANTES de crear el usuario de Auth.
+        // Si el usuario NO ESTÁ LOGUEADO, 'request.auth' en las reglas será NULL.
+        // La regla para leer usuarios es 'allow read: if request.auth != null;'.
+        // Esto significa que si no hay nadie logueado, esta consulta NO se puede hacer.
+        console.error("AUTH: Error al verificar unicidad de nombre (pre-Auth). Causa probable: Usuario no logueado para leer 'usuarios'.", error);
+        mostrarMensaje("Error al verificar nombre de jugador. Asegúrate de iniciar sesión o contacta a soporte.", "error", "global-mensaje");
+        return;
       }
 
-      // --- CAMBIO CLAVE: Retraso y reintento para la verificación de unicidad ---
-      // Dar un pequeño tiempo para que el estado de Auth se propague
-      setTimeout(async () => {
-          try {
-              const qNombreExistente = query(usuariosCol, where("nombre", "==", nombreLower));
-              const snapshotNombreExistente = await getDocs(qNombreExistente); // <--- Línea 216
+      // Si la verificación de unicidad es exitosa (o la base de datos está vacía), procede con la autenticación y creación del documento.
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        console.log("AUTH: Usuario autenticado con éxito al registrar, UID:", user.uid);
 
-              if (!snapshotNombreExistente.empty) {
-                  const foundDoc = snapshotNombreExistente.docs[0];
-                  if (foundDoc.id !== userCredential.user.uid) { // Asegurarse de que no sea el propio UID recién creado
-                      // Si el nombre ya existe y no es el UID del usuario que acaba de registrarse,
-                      // esto indica un problema de concurrencia o un nombre realmente duplicado.
-                      // En este punto, deberíamos eliminar el usuario recién creado de Auth para limpiar.
-                      console.error("AUTH: Nombre duplicado detectado después de crear Auth user. Eliminando usuario.");
-                      await userCredential.user.delete(); // Eliminar usuario de Auth
-                      mostrarMensaje("Este nombre de jugador ya está en uso. Por favor, elige otro.", "error", "global-mensaje");
-                      return;
-                  }
-              }
-              console.log("AUTH: Verificación de unicidad de nombre exitosa/nombre único.");
+        await updateProfile(user, { displayName: nombre });
+        console.log("AUTH: Perfil de Auth actualizado con displayName.");
 
-              // Si llegamos aquí, el nombre es único o es el del propio usuario. Procedemos a crear el documento en Firestore.
-              await updateProfile(userCredential.user, { displayName: nombre });
-              console.log("AUTH: Perfil de Auth actualizado con displayName.");
+        await setDoc(doc(db, "usuarios", user.uid), {
+          email: user.email,
+          nombre: nombreLower,
+          nombreOriginal: nombre,
+          uid: user.uid,
+          esCapitan: false,
+          equipoCapitaneadoId: null
+        });
+        console.log("AUTH: Documento de usuario creado en Firestore para UID:", user.uid);
 
-              await setDoc(doc(db, "usuarios", userCredential.user.uid), {
-                email: userCredential.user.email,
-                nombre: nombreLower,
-                nombreOriginal: nombre,
-                uid: userCredential.user.uid,
-                esCapitan: false,
-                equipoCapitaneadoId: null
-              });
-              console.log("AUTH: Documento de usuario creado en Firestore para UID:", userCredential.user.uid);
+        mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
 
-              mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
-
-          } catch (error) {
-              console.error("AUTH: Error al verificar unicidad o crear documento Firestore (después de Auth):", error); // Log principal si falla aquí
-              mostrarMensaje("Error final de registro: " + error.message, "error", "global-mensaje");
-              // Considerar eliminar el usuario de Auth si falla la creación del documento en Firestore
-              if (userCredential && userCredential.user) {
-                  console.warn("AUTH: Limpiando usuario de Auth debido a fallo en Firestore.");
-                  await userCredential.user.delete();
-              }
-          }
-      }, 500); // Retraso de 500ms
+      } catch (error) {
+        console.error("AUTH: Error al crear usuario o documento de Firestore (post-Auth):", error);
+        mostrarMensaje("Error al crear cuenta: " + error.message, "error", "global-mensaje");
+        // Si la creación del documento en Firestore falla AQUI, es probable que se deba
+        // a un problema con 'request.auth.uid == userId' en la regla 'allow create'.
+        // En este caso, el usuario de Auth ya fue creado, por lo que quizás debamos limpiarlo.
+        if (userCredential && userCredential.user) {
+            console.warn("AUTH: Limpiando usuario de Auth debido a fallo en Firestore.");
+            await userCredential.user.delete(); // Intenta eliminar el usuario de Auth
+        }
+      }
     });
-
+  }
   if (loginForm) {
     loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
