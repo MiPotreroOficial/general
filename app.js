@@ -702,86 +702,49 @@ onAuthStateChanged(auth, async user => {
     const userDocRef = doc(db, "usuarios", user.uid);
     const userDocSnap = await getDoc(userDocRef);
 
-    // *** CAMBIOS APLICADOS AQUÍ: Lógica consolidada para asegurar el documento de usuario en Firestore ***
-    // Y para establecer/sincronizar el displayName en Firebase Authentication
+    let userNameFromInput = localStorage.getItem('temp_register_name');
+    let profileDisplayName = user.displayName;
 
-    let userNameFromInput = localStorage.getItem('temp_register_name'); // Recupera el nombre del registro
-    let profileDisplayName = user.displayName; // Nombre actual de Firebase Auth
-
-    // Si el documento de usuario no existe en Firestore
     if (!userDocSnap.exists()) {
       try {
-        // Intentar establecer el displayName en Firebase Authentication si no está seteado
         if (!profileDisplayName && userNameFromInput) {
             await updateProfile(user, { displayName: userNameFromInput });
-            profileDisplayName = userNameFromInput; // Actualizar la variable local
+            profileDisplayName = userNameFromInput;
             console.log("DisplayName de Auth actualizado con nombre del registro temporal.");
         } else if (!profileDisplayName) {
-            // Fallback si no hay displayName ni nombre del registro, usar parte del email
-            await updateProfile(user, { displayName: user.email.split('@')[0] });
-            profileDisplayName = user.email.split('@')[0];
-            console.log("DisplayName de Auth actualizado a partir del email.");
+             await updateProfile(user, { displayName: user.email.split('@')[0] });
+             profileDisplayName = user.email.split('@')[0];
+             console.log("DisplayName de Auth actualizado a partir del email.");
         }
 
-        // Crear el documento de usuario en Firestore
+        // --- AÑADE UN PEQUEÑO RETRASO AQUÍ ---
+        await new Promise(resolve => setTimeout(resolve, 500)); // Espera 500ms (medio segundo)
+
         await setDoc(userDocRef, {
           email: user.email,
-          nombre: profileDisplayName.toLowerCase(), // Usar el displayName establecido
-          nombreOriginal: profileDisplayName, // Usar el displayName establecido
+          nombre: profileDisplayName.toLowerCase(),
+          nombreOriginal: profileDisplayName,
           uid: user.uid,
           esCapitan: false,
           equipoCapitaneadoId: null
-        }, { merge: true }); // Usar merge: true para ser más indulgente si hay una race condition muy rápida
+        }, { merge: true });
         console.log("Documento de usuario creado en Firestore por onAuthStateChanged para UID:", user.uid);
         
-        // Limpiar el nombre temporal una vez usado
         localStorage.removeItem('temp_register_name');
 
       } catch (error) {
         console.error("Error al crear/actualizar documento de usuario en Firestore (onAuthStateChanged):", error);
-        mostrarMensaje("Error al inicializar perfil de usuario. Intenta de nuevo más tarde.", "error", "global-mensaje");
+        mostrarMensaje("Error al inicializar perfil de usuario. Intenta de nuevo más tarde." + error.message, "error", "global-mensaje");
       }
     } else {
-      // Si el documento YA EXISTE, pero el usuario se registró usando el formulario,
-      // asegúrate de que 'nombreOriginal' y 'nombre' estén correctos y el displayName de Auth.
-      const userData = userDocSnap.data();
-      let needsUpdate = false;
-      const newNombreOriginal = user.displayName || userData.nombreOriginal || userData.nombre || user.email.split('@')[0];
-      const newNombre = newNombreOriginal.toLowerCase();
-
-      // Sincronizar displayName de Auth con Firestore si es necesario
-      if (!user.displayName || user.displayName !== newNombreOriginal) {
-          try {
-              await updateProfile(user, { displayName: newNombreOriginal });
-              console.log("DisplayName de Auth sincronizado con Firestore.");
-          } catch (updateError) {
-              console.error("Error al sincronizar displayName de Auth:", updateError);
-          }
-      }
-
-      // Sincronizar Firestore con el displayName si es necesario
-      if (userData.nombreOriginal !== newNombreOriginal || userData.nombre !== newNombre) {
-          needsUpdate = true;
-      }
-
-      if (needsUpdate) {
-         try {
-             await updateDoc(userDocRef, {
-                 nombre: newNombre,
-                 nombreOriginal: newNombreOriginal,
-             });
-             console.log("Perfil de usuario actualizado con nombre en Firestore via onAuthStateChanged para UID:", user.uid);
-         } catch (updateError) {
-             console.error("Error al actualizar nombre en perfil de usuario (onAuthStateChanged):", updateError);
-         }
-      }
-      // Limpiar el nombre temporal si existía y el documento ya lo tenía
-      localStorage.removeItem('temp_register_name');
+        // ... (tu lógica existente para cuando el documento ya existe)
+        // ... (asegúrate de que la lógica de sincronización del nombre también esté aquí si es necesaria,
+        //      pero el setDoc principal se maneja arriba)
+        // Limpiar el nombre temporal si existía y el documento ya lo tenía
+        localStorage.removeItem('temp_register_name');
     }
     
-    // Aquí, user.displayName siempre debería tener un valor razonable para displayUserProfile
     displayUserProfile(user); 
-    // Llamar al listener de invitaciones cuando el usuario está logueado
     setupInvitationsListener(user.uid); 
     const currentHash = window.location.hash.substring(1);
     if (currentHash === '' || currentHash === 'cuenta') {
@@ -790,23 +753,7 @@ onAuthStateChanged(auth, async user => {
         navigateTo(currentHash);
     }
   } else {
-    // Si no hay usuario, limpiar el contador de notificaciones
-    if (notificationCountSpan) {
-        notificationCountSpan.textContent = '0';
-        notificationCountSpan.style.display = 'none';
-    }
-    // Desactivar listener si el usuario se desloguea
-    if (unsubscribeInvitationsListener) {
-        unsubscribeInvitationsListener(); 
-        unsubscribeInvitationsListener = null;
-    }
-
-    renderAuthForm(false);
-    const currentHash = window.location.hash.substring(1);
-    if (['explorar', 'crear', 'partidos', 'notificaciones', 'torneo'].includes(currentHash)) {
-        navigateTo('cuenta');
-    }
-    // Limpiar el nombre temporal si el usuario se desloguea
+    // ... (tu lógica existente para cuando no hay usuario)
     localStorage.removeItem('temp_register_name');
   }
 });
