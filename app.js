@@ -156,6 +156,10 @@ window.addEventListener('popstate', () => {
 
 // --- Lógica de Autenticación para Cuenta (Con gestión de equipo) ---
 function renderAuthForm(isLogin = false) {
+  console.log("renderAuthForm: Se está ejecutando para isLogin =", isLogin); // Depuración
+  const formId = isLogin ? 'login-form' : 'register-form';
+  console.log("renderAuthForm: El ID del formulario será:", formId); // Depuración
+
   cuentaSection.innerHTML = `
     <h2>${isLogin ? 'Iniciar Sesión' : 'Registrarse'}</h2>
     <form id="${isLogin ? 'login-form' : 'register-form'}">
@@ -167,6 +171,7 @@ function renderAuthForm(isLogin = false) {
       <button type="submit">${isLogin ? 'Iniciar Sesión' : 'Registrarse'}</button>
     </form>
   `;
+  console.log("renderAuthForm: innerHTML de cuentaSection modificado."); // Depuración
   setupAuthForms();
 }
 
@@ -214,8 +219,7 @@ function setupAuthForms() {
         //   equipoCapitaneadoId: null
         // });
 
-        // Puedes guardar el nombre de jugador en el localStorage temporalmente si es necesario,
-        // para que onAuthStateChanged lo use si no puede derivarlo (aunque ahora updateProfile lo maneja)
+        // Guarda el nombre de jugador en el localStorage para que onAuthStateChanged lo use
         localStorage.setItem('temp_register_name', nombre);
 
 
@@ -699,6 +703,7 @@ async function deleteTeam(teamId, captainUid) {
 
 onAuthStateChanged(auth, async user => {
   if (user) {
+    console.log("onAuthStateChanged: Usuario autenticado. UID:", user.uid); // Depuración
     const userDocRef = doc(db, "usuarios", user.uid);
     const userDocSnap = await getDoc(userDocRef);
 
@@ -706,30 +711,35 @@ onAuthStateChanged(auth, async user => {
     let profileDisplayName = user.displayName;
 
     if (!userDocSnap.exists()) {
+      console.log("onAuthStateChanged: Documento de usuario NO existe en Firestore."); // Depuración
       try {
+        // 1. Intentar establecer el displayName en Firebase Authentication
         if (!profileDisplayName && userNameFromInput) {
             await updateProfile(user, { displayName: userNameFromInput });
-            profileDisplayName = userNameFromInput;
-            console.log("DisplayName de Auth actualizado con nombre del registro temporal.");
+            profileDisplayName = userNameFromInput; // Actualizar la variable local
+            console.log("onAuthStateChanged: DisplayName de Auth actualizado con nombre del registro temporal."); // Depuración
         } else if (!profileDisplayName) {
+             // Fallback si no hay displayName ni nombre del registro, usar parte del email
              await updateProfile(user, { displayName: user.email.split('@')[0] });
              profileDisplayName = user.email.split('@')[0];
-             console.log("DisplayName de Auth actualizado a partir del email.");
+             console.log("onAuthStateChanged: DisplayName de Auth actualizado a partir del email."); // Depuración
         }
 
         // --- AÑADE UN PEQUEÑO RETRASO AQUÍ ---
         await new Promise(resolve => setTimeout(resolve, 500)); // Espera 500ms (medio segundo)
 
+        // 2. Crear el documento de usuario en Firestore
         await setDoc(userDocRef, {
           email: user.email,
-          nombre: profileDisplayName.toLowerCase(),
-          nombreOriginal: profileDisplayName,
+          nombre: profileDisplayName.toLowerCase(), // Usar el displayName establecido
+          nombreOriginal: profileDisplayName, // Usar el displayName establecido
           uid: user.uid,
           esCapitan: false,
           equipoCapitaneadoId: null
-        }, { merge: true });
-        console.log("Documento de usuario creado en Firestore por onAuthStateChanged para UID:", user.uid);
+        }, { merge: true }); // Usar merge: true para ser más indulgente si hay una race condition muy rápida
+        console.log("onAuthStateChanged: Documento de usuario creado en Firestore por onAuthStateChanged para UID:", user.uid); // Depuración
         
+        // Limpiar el nombre temporal una vez usado
         localStorage.removeItem('temp_register_name');
 
       } catch (error) {
@@ -737,9 +747,40 @@ onAuthStateChanged(auth, async user => {
         mostrarMensaje("Error al inicializar perfil de usuario. Intenta de nuevo más tarde." + error.message, "error", "global-mensaje");
       }
     } else {
-        // ... (tu lógica existente para cuando el documento ya existe)
-        // ... (asegúrate de que la lógica de sincronización del nombre también esté aquí si es necesaria,
-        //      pero el setDoc principal se maneja arriba)
+        console.log("onAuthStateChanged: Documento de usuario YA existe en Firestore."); // Depuración
+        // Si el documento YA EXISTE, pero el usuario se registró usando el formulario,
+        // asegúrate de que 'nombreOriginal' y 'nombre' estén correctos y el displayName de Auth.
+        const userData = userDocSnap.data();
+        let needsUpdate = false;
+        const newNombreOriginal = user.displayName || userData.nombreOriginal || userData.nombre || user.email.split('@')[0];
+        const newNombre = newNombreOriginal.toLowerCase();
+
+        // Sincronizar displayName de Auth con Firestore si es necesario
+        if (!user.displayName || user.displayName !== newNombreOriginal) {
+            try {
+                await updateProfile(user, { displayName: newNombreOriginal });
+                console.log("onAuthStateChanged: DisplayName de Auth sincronizado con Firestore."); // Depuración
+            } catch (updateError) {
+                console.error("onAuthStateChanged: Error al sincronizar displayName de Auth:", updateError);
+            }
+        }
+
+        // Sincronizar Firestore con el displayName si es necesario
+        if (userData.nombreOriginal !== newNombreOriginal || userData.nombre !== newNombre) {
+            needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+           try {
+               await updateDoc(userDocRef, {
+                   nombre: newNombre,
+                   nombreOriginal: newNombreOriginal,
+               });
+               console.log("onAuthStateChanged: Perfil de usuario actualizado con nombre en Firestore vía onAuthStateChanged para UID:", user.uid); // Depuración
+           } catch (updateError) {
+               console.error("onAuthStateChanged: Error al actualizar nombre en perfil de usuario (onAuthStateChanged):", updateError);
+           }
+        }
         // Limpiar el nombre temporal si existía y el documento ya lo tenía
         localStorage.removeItem('temp_register_name');
     }
@@ -753,7 +794,24 @@ onAuthStateChanged(auth, async user => {
         navigateTo(currentHash);
     }
   } else {
-    // ... (tu lógica existente para cuando no hay usuario)
+    console.log("onAuthStateChanged: NO hay usuario autenticado. Mostrando formularios de autenticación."); // Depuración
+    // Si no hay usuario, limpiar el contador de notificaciones
+    if (notificationCountSpan) {
+        notificationCountSpan.textContent = '0';
+        notificationCountSpan.style.display = 'none';
+    }
+    // Desactivar listener si el usuario se desloguea
+    if (unsubscribeInvitationsListener) {
+        unsubscribeInvitationsListener(); 
+        unsubscribeInvitationsListener = null;
+    }
+
+    renderAuthForm(false); // <--- ESTA LÍNEA ES CRUCIAL PARA MOSTRAR LOS FORMULARIOS
+    const currentHash = window.location.hash.substring(1);
+    if (['explorar', 'crear', 'partidos', 'notificaciones', 'torneo'].includes(currentHash)) {
+        navigateTo('cuenta');
+    }
+    // Limpiar el nombre temporal si el usuario se desloguea
     localStorage.removeItem('temp_register_name');
   }
 });
@@ -1180,8 +1238,8 @@ async function crearPartido() {
 
   // Validar mínimo de jugadores al crear el partido
   if (jugadoresConfirmadosEquipo1.length < maxJugadoresConfirmados) {
-      mostrarMensaje(`Tu equipo (${equipoCreadorData.nombre}) tiene ${jugadoresConfirmadosEquipo1.length} jugadores. Necesita al menos ${maxJugadoresConfirmados} para crear este partido de ${tipoFutbol}.`, "error", "mensaje-crear");
-      return;
+    mostrarMensaje(`Tu equipo (${equipoCreadorData.nombre}) tiene ${jugadoresConfirmadosEquipo1.length} jugadores. Necesita al menos ${maxJugadoresConfirmados} para crear este partido de ${tipoFutbol}.`, "error", "mensaje-crear");
+    return;
   }
 
   // Asignar los jugadores confirmados y reserva al objeto partido
@@ -1394,10 +1452,12 @@ window.unirseAPartido = async function(partidoId, partidoData, miEquipoId, miEqu
 
 // Inicializar la aplicación: determina la página a mostrar al cargar
 document.addEventListener('DOMContentLoaded', () => {
+    console.log("DOMContentLoaded: Evento disparado."); // Depuración
     const btnCrear = document.getElementById("btnCrear");
     if (btnCrear) {
         btnCrear.addEventListener("click", crearPartido);
     }
     const initialPath = window.location.hash.substring(1) || 'cuenta';
+    console.log("DOMContentLoaded: Navegando a la ruta inicial:", initialPath); // Depuración
     navigateTo(initialPath);
 });
