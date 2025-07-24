@@ -28,7 +28,6 @@ import {
 
 // Config y init Firebase (Tus credenciales reales de Firebase ya deben estar aquí)
 const firebaseConfig = {
-  const firebaseConfig = { 
     apiKey: "AIzaSyBRo2ZoKk-XbgPkNl1BOtRcGhSB4JEuocM", 
     authDomain: "mi-potrero-partidos.firebaseapp.com", 
     projectId: "mi-potrero-partidos", 
