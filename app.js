@@ -35,7 +35,7 @@ const firebaseConfig = {
     storageBucket: "mi-potrero-partidos.firebasestorage.app", 
     messagingSenderId: "555922222113", 
     appId: "1:555922222113:web:dd2f79d5e20f0d96cac760",
-    measurementId: "G-7LBJ29RXKM" };
+    measurementId: "G-7LBJ29RXKM"
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
