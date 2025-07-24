@@ -17,7 +17,7 @@ import {
   where,
   updateDoc,
   doc,
-  setDoc, // setDoc se mantiene para updateProfile y otros updates, no para la creación inicial del usuario en onAuthStateChanged
+  setDoc,
   getDoc,
   arrayUnion,
   arrayRemove,
@@ -46,9 +46,8 @@ const invitacionesCol = collection(db, "invitaciones");
 
 // --- Variables para SPA (GLOBALES) ---
 const allSections = document.querySelectorAll('main section');
-// Verificaciones de existencia de elementos DOM al inicio
 const navLinks = document.querySelectorAll('.nav-link');
-const cuentaSection = document.getElementById('cuenta-section'); // Esto ya se hace en DOMContentLoaded para asegurar que exista
+const cuentaSection = document.getElementById('cuenta-section');
 const notificationCountSpan = document.getElementById('notification-count');
 let unsubscribeInvitationsListener = null; // Para gestionar el listener de notificaciones
 
@@ -87,6 +86,32 @@ function showSection(sectionId) {
   sectionToShow.classList.remove('hidden');
   sectionToShow.classList.add('active-section');
   console.log("APP: Mostrando sección:", sectionId); // Depuración
+}
+
+// --- FUNCIÓN DE REINTENTO CON RETROCESO EXPONENCIAL (NUEVA) ---
+async function retryOperation(operation, maxRetries = 5, baseDelayMs = 200) {
+    for (let i = 0; i <= maxRetries; i++) {
+        try {
+            return await operation(); // Intenta ejecutar la operación
+        } catch (error) {
+            console.warn(`APP: Intento ${i + 1}/${maxRetries + 1} fallido:`, error.message, "Código:", error.code);
+            // Solo reintentar para errores de permisos, cancelación o indisponibilidad (timing/network)
+            if (error.code === 'permission-denied' || error.code === 'unavailable' || error.code === 'cancelled' || i === maxRetries) {
+                if (i < maxRetries) {
+                    const delay = baseDelayMs * Math.pow(2, i); // Retroceso exponencial
+                    console.log(`APP: Reintentando en ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    console.error("APP: Máximo de reintentos alcanzado. Operación falló definitivamente.", error);
+                    throw error; // Relanzar el error si se alcanzó el máximo de reintentos
+                }
+            } else {
+                // Si es un tipo de error diferente, no reintentar, simplemente relanzar
+                console.error("APP: Error no reintentable. Operación falló.", error);
+                throw error;
+            }
+        }
+    }
 }
 
 
@@ -237,8 +262,8 @@ function setupAuthForms() {
         localStorage.setItem('temp_register_name', nombre);
 
         // ¡IMPORTANTE! La creación del documento de usuario en Firestore
-        // ahora se espera que sea manejada por una Firebase Cloud Function (backend).
-        // No hay setDoc aquí en el frontend para evitar race conditions y problemas de permisos.
+        // ahora se espera que sea manejada por el listener onAuthStateChanged con reintentos.
+        // No hay setDoc aquí en el frontend para evitar race conditions directas.
 
         mostrarMensaje("Cuenta creada correctamente. ¡Bienvenido, " + nombre + "!", "exito", "global-mensaje");
       } catch (error) {
@@ -822,7 +847,7 @@ async function aceptarInvitacion(event) {
         const userDocRef = doc(db, "usuarios", user.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (!userDocSnap.exists()) {
-            mostrarMensaje("Error: Tu perfil de usuario no se encontró.", "error", "global-mensaje");
+            mostrarMensaje("Error: Tu perfil de usuario no se encontró. No puedes unirte a un equipo sin perfil.", "error", "global-mensaje");
             console.error("FUNC: Usuario intentó aceptar invitación pero no tiene documento de perfil en Firestore.");
             return;
         }
@@ -970,6 +995,7 @@ async function cargarPartidos() {
       // Obtener jugadores confirmados y reserva para Equipo 2
       const jugadoresConfirmados2 = p.jugadoresEquipo2Nombres || [];
       const jugadoresReserva2 = p.jugadoresEquipo2ReservaNombres || [];
+
 
       div.innerHTML = `
         <h3>${p.lugar}</h3>
@@ -1392,7 +1418,19 @@ onAuthStateChanged(auth, async user => {
   if (user) {
     console.log("APP: onAuthStateChanged: Usuario autenticado. UID:", user.uid); // Depuración
     const userDocRef = doc(db, "usuarios", user.uid);
-    const userDocSnap = await getDoc(userDocRef); // Obtener el documento del usuario
+    let userDocSnap; // Declarar fuera del try/catch para el ámbito
+
+    // Intentar obtener el documento del usuario primero
+    try {
+        userDocSnap = await getDoc(userDocRef);
+    } catch (error) {
+        console.error("APP: Error inicial al obtener userDoc en onAuthStateChanged:", error);
+        mostrarMensaje("Error al cargar perfil de usuario. Recarga la página.", "error", "global-mensaje");
+        // En un caso crítico, podrías forzar el cierre de sesión para evitar un estado inconsistente
+        // signOut(auth);
+        return;
+    }
+
 
     let userNameFromInput = localStorage.getItem('temp_register_name');
     let profileDisplayName = user.displayName;
@@ -1415,21 +1453,34 @@ onAuthStateChanged(auth, async user => {
         console.log("APP: DisplayName de Auth actualizado a partir del email."); // Depuración
     }
 
-    // Lógica para crear/sincronizar el documento de usuario en Firestore
-    // ¡IMPORTANTE! La creación inicial del documento de usuario (`setDoc`)
-    // DEBE ser manejada por una Firebase Cloud Function (función `onCreate` de autenticación).
-    // Este `onAuthStateChanged` sólo se encarga de SINCRONIZAR/ACTUALIZAR si ya existe,
-    // o de LOGGEAR si por alguna razón el documento no se creó (lo que indicaría un problema en la Cloud Function).
+    // --- Lógica para CREAR/ACTUALIZAR el documento de usuario en Firestore CON REINTENTOS ---
     if (!userDocSnap.exists()) {
-        console.warn("APP: onAuthStateChanged: Documento de usuario NO existe en Firestore. Debería ser creado por Cloud Function."); // Depuración
-        // Puedes agregar aquí una lógica de reintento o de notificación a los desarrolladores
-        // si el documento no aparece después de un breve tiempo.
-        // Pero NO intentes crear el documento directamente aquí para evitar el error de permisos.
-        mostrarMensaje("Perfil de usuario no encontrado en la base de datos. Recargando para verificar...", "info", "global-mensaje");
-        setTimeout(() => window.location.reload(), 2000); // Reintentar recargar para ver si la CF lo creó
-        return; // Salir para evitar más operaciones sin perfil.
+      console.log("APP: Documento de usuario NO existe en Firestore. Intentando crearlo con reintentos...");
+      try {
+        await retryOperation(async () => {
+          await setDoc(userDocRef, {
+            email: user.email,
+            nombre: profileDisplayName.toLowerCase(),
+            nombreOriginal: profileDisplayName,
+            uid: user.uid,
+            esCapitan: false,
+            equipoCapitaneadoId: null,
+            createdAt: serverTimestamp() // Usa serverTimestamp para la hora de creación
+          }, { merge: true }); // Usar merge: true para ser más indulgente si hay una race condition muy rápida
+        }, 5); // 5 reintentos (1 intento original + 4 reintentos exponenciales)
+        
+        console.log("APP: Documento de usuario creado/actualizado en Firestore con éxito (tras reintentos si hubo). UID:", user.uid);
+        localStorage.removeItem('temp_register_name'); // Limpiar nombre temporal después de la creación exitosa
+
+      } catch (error) {
+        console.error("APP: Error FATAL al crear documento de usuario en Firestore (onAuthStateChanged).", error);
+        mostrarMensaje("Error crítico al inicializar perfil. Contacta a soporte o intenta de nuevo más tarde.", "error", "global-mensaje");
+        // Opcionalmente, forzar el cierre de sesión para evitar un estado inconsistente si la creación del perfil falla críticamente
+        signOut(auth);
+        return;
+      }
     } else {
-        console.log("APP: onAuthStateChanged: Documento de usuario YA existe en Firestore."); // Depuración
+        console.log("APP: Documento de usuario YA existe en Firestore. Sincronizando si es necesario.");
         // Si el documento YA EXISTE, asegurar que los campos de nombre sean correctos en Firestore.
         const userData = userDocSnap.data();
         let needsUpdateInFirestore = false;
@@ -1452,11 +1503,9 @@ onAuthStateChanged(auth, async user => {
                console.error("APP: Error al actualizar nombre en perfil de usuario (onAuthStateChanged):", updateError);
            }
         }
+        localStorage.removeItem('temp_register_name'); // Limpiar nombre temporal
     }
     
-    // Limpiar el nombre temporal una vez usado (ya sea si el doc existía o la CF lo creó)
-    localStorage.removeItem('temp_register_name');
-
     // Continuar con la visualización del perfil y listeners
     displayUserProfile(user); 
     setupInvitationsListener(user.uid); 
@@ -1496,8 +1545,6 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log("APP: DOMContentLoaded: Evento disparado."); // Depuración
     
     // Verificación temprana del elemento crítico 'cuenta-section'
-    // Se ha movido aquí para asegurar que 'cuentaSection' se inicialice si el script se carga después del DOM
-    // although it's a global const already. This is more of a safety check.
     const cuentaSectionCheck = document.getElementById('cuenta-section');
     if (!cuentaSectionCheck) {
         console.error("APP: DOMContentLoaded: Elemento 'cuenta-section' no encontrado. La aplicación no funcionará correctamente.");
@@ -1506,6 +1553,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Inicializar listeners de la barra lateral (navLinks) una vez que DOM esté cargado
+    // Estos listeners son globales y llaman a navigateTo, que ya está definida globalmente
     navLinks.forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1531,12 +1579,13 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log("APP: DOMContentLoaded: Navegando a la ruta inicial:", initialPath); // Depuración
 
     // Usar Promise.resolve().then() para empujar la llamada a navigateTo
-    // a la cola de microtasks, asegurando que el script principal ha terminado de evaluarse.
+    // a la cola de microtasks, asegurando que el script principal ha terminado de evaluarse
+    // y que navigateTo esté disponible en el ámbito del DOMContentLoaded.
     Promise.resolve().then(() => {
-        if (typeof navigateTo === 'function') {
+        if (typeof navigateTo === 'function') { // Verificar si navigateTo es una función
             navigateTo(initialPath);
         } else {
-            console.error("ERROR CRÍTICO: navigateTo NO ESTÁ DEFINIDA después de microtask. Problema de carga de script.");
+            console.error("ERROR CRÍTICO: navigateTo NO ESTÁ DEFINIDA. Problema de carga o ámbito de script.");
             mostrarMensaje("Error interno de la aplicación. Por favor, recarga la página.", "error", "global-mensaje");
         }
     });
