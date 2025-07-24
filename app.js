@@ -667,9 +667,16 @@ async function searchAndAddPlayer(teamId) {
             foundPlayersCount++;
             const resultDiv = document.createElement('div');
             resultDiv.style.marginBottom = '5px';
+            
+            // *** CAMBIO CRÍTICO AQUÍ: Generar invitacionId en el formato requerido por las reglas ***
+            const invitacionIdForButton = playerUid + "_" + teamId;
+
             resultDiv.innerHTML = `
                 <span>${displayPlayerName} (${playerData.email})</span>
-                <button data-player-uid="${playerUid}" data-player-name="${displayPlayerName}" data-player-email="${playerData.email}"
+                <button data-player-uid="${playerUid}" 
+                        data-player-name="${displayPlayerName}" 
+                        data-player-email="${playerData.email}"
+                        data-invitacion-id-format="${invitacionIdForButton}"
                         style="margin-left: 10px; padding: 5px 10px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
                     Invitar
                 </button>
@@ -689,9 +696,20 @@ async function searchAndAddPlayer(teamId) {
                 const playerUidToAdd = targetButton.dataset.playerUid;
                 const playerNameToAdd = targetButton.dataset.playerName;
                 const playerEmailToAdd = targetButton.dataset.playerEmail;
+                // *** OBTENER EL ID DE INVITACIÓN EN EL FORMATO CORRECTO ***
+                const invitacionDocId = targetButton.dataset.invitacionIdFormat; 
+
+                // Verificación adicional: Si la invitación ya existe y está pendiente, no enviar de nuevo
+                const existingInvitationRef = doc(invitacionesCol, invitacionDocId);
+                const existingInvitationSnap = await getDoc(existingInvitationRef);
+                if (existingInvitationSnap.exists() && existingInvitationSnap.data().estado === "pendiente") {
+                    mostrarMensaje(`Ya existe una invitación pendiente para ${playerNameToAdd} en este equipo.`, "info", "global-mensaje");
+                    return;
+                }
 
                 try {
-                    await addDoc(invitacionesCol, {
+                    // *** CAMBIO CRÍTICO AQUÍ: Usar setDoc con el ID predefinido ***
+                    await setDoc(doc(invitacionesCol, invitacionDocId), {
                         equipoId: teamId,
                         equipoNombre: teamData.nombre,
                         capitanUid: user.uid,
@@ -701,7 +719,7 @@ async function searchAndAddPlayer(teamId) {
                         estado: "pendiente",
                         timestamp: serverTimestamp()
                     });
-                    console.log(`FUNC: Invitación enviada a ${playerNameToAdd}.`);
+                    console.log(`FUNC: Invitación enviada a ${playerNameToAdd}. ID de invitación: ${invitacionDocId}`);
                     mostrarMensaje(`Invitación enviada a ${playerNameToAdd}.`, "exito", "global-mensaje");
                     searchPlayerNameInput.value = '';
                     playerSearchResultsDiv.innerHTML = '';
