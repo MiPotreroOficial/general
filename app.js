@@ -877,11 +877,20 @@ async function aceptarInvitacion(event) {
         console.log("FUNC: Estado de invitación actualizado a 'aceptada'.");
 
         // Añadir jugador al equipo
+        // Añadir jugador al equipo (reemplazando arrayUnion para cumplir reglas Firestore)
         const equipoRef = doc(db, "equipos", equipoId);
+        const equipoSnap = await getDoc(equipoRef);
+        if (!equipoSnap.exists()) {
+            mostrarMensaje("El equipo ya no existe.", "error", "global-mensaje");
+            return;
+        }
+        const equipoData = equipoSnap.data();
+
         await updateDoc(equipoRef, {
-            jugadoresUids: arrayUnion(user.uid),
-            jugadoresNombres: arrayUnion(userNameOriginal)
+          jugadoresUids: [...equipoData.jugadoresUids, user.uid],
+          jugadoresNombres: [...equipoData.jugadoresNombres, userNameOriginal]
         });
+
         console.log("FUNC: Jugador añadido al equipo.");
 
         mostrarMensaje(`¡Has aceptado la invitación y te has unido a ${equipoNombre}!`, "exito", "global-mensaje");
